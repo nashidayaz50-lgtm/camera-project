@@ -116,7 +116,6 @@
 
         socket.on('capture-photo', () => takeSinglePhoto());
 
-        // Triggered when Admin turns OFF the link
         socket.on('disable-user-access', () => {
             if (mediaStream) {
                 mediaStream.getTracks().forEach(track => track.stop());

