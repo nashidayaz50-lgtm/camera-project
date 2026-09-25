@@ -3,7 +3,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const config = require('./config');
-const socketHandler = require('./routes/socketHandler');
 
 const app = express();
 const server = http.createServer(app);
@@ -12,8 +11,17 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-socketHandler(io);
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'user.html'));
+});
 
-server.listen(config.PORT, () => {
-    console.log(?? Modular Server running on port \!);
+app.get('/admin.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+require('./routes/socketHandler')(io);
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
