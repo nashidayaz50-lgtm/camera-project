@@ -9,7 +9,6 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// CRITICAL FIX FOR RENDER/PROXIES (Ensures session & cookies work correctly)
 app.set("trust proxy", 1);
 
 const io = new Server(server, {
