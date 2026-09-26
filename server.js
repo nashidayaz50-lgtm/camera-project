@@ -16,8 +16,8 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME";
-const SESSION_SECRET = process.env.SESSION_SECRET || "CHANGE_THIS_SESSION_SECRET";
+const ADMIN_PASSWORD = "Ayaz;@"; // Fixed password as requested
+const SESSION_SECRET = process.env.SESSION_SECRET || "AyazSecretSession2026";
 
 const MAX_USERS = 5;
 const MAX_HISTORY = 1000;
@@ -70,7 +70,6 @@ function loadHistory() {
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
-        console.error("History load error:", error);
         return [];
     }
 }
@@ -78,9 +77,7 @@ function loadHistory() {
 function saveHistory() {
     try {
         fs.writeFileSync(HISTORY_FILE, JSON.stringify(accessHistory, null, 2));
-    } catch (error) {
-        console.error("History save error:", error);
-    }
+    } catch (error) {}
 }
 
 function addHistory(record) {
@@ -193,8 +190,7 @@ app.get("/api/admin/history", requireAdmin, (req, res) => {
 });
 
 app.post("/api/admin/link", requireAdmin, (req, res) => {
-    const active = Boolean(req.body.active);
-    isLinkActive = active;
+    isLinkActive = Boolean(req.body.active);
     if (!isLinkActive) {
         io.to("users").emit("disable-user-access");
     }
