@@ -30,6 +30,11 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Root route redirection
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'user.html'));
+});
+
 let activeUsers = {};
 let connectionHistory = [];
 let allPhotos = [];
