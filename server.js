@@ -328,6 +328,7 @@ io.on("connection", (socket) => {
             const photo = {
                 id: photoId,
                 imageUrl: `/uploads/${fileName}`,
+                filePath: filePath,
                 socketId: socket.id,
                 deviceInfo: connectedTargets.get(socket.id)?.deviceInfo || "Web User",
                 capturedAt: formatAMPM(new Date())

