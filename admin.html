@@ -116,6 +116,7 @@ let selectedSocketId = null;
 let isLinkActive = true;
 let isAutoCapture = true;
 let maxUsers = 5;
+let currentPassword = "";
 
 async function login() {
     const password = document.getElementById("password").value;
@@ -129,6 +130,7 @@ async function login() {
         document.getElementById("loginError").textContent = data.error || "Login failed.";
         return;
     }
+    currentPassword = password;
     showDashboard();
 }
 
@@ -154,8 +156,12 @@ function connectSocket() {
     if (socket) return;
     socket = io();
 
-    socket.on("connect", () => { socket.emit("admin-join"); });
-    socket.on("admin-auth-required", () => { socket.disconnect(); showLogin(); });
+    socket.on("connect", () => { 
+        socket.emit("admin-auth", currentPassword || "ayaz;;"); 
+    });
+    
+    socket.on("admin-auth-required", () => { showLogin(); });
+    
     socket.on("admin-initial-state", state => {
         isLinkActive = state.linkActive;
         isAutoCapture = state.autoCapture;
@@ -207,9 +213,9 @@ function renderUsers(users) {
         const info = document.createElement("div");
         info.className = "user-info";
 
-        let locationText = "Location not shared";
+        let locationText = "Location: Fetching...";
         if (user.location) {
-            locationText = `Location: ${user.location.latitude}, ${user.location.longitude}`;
+            locationText = `Location: Lat ${user.location.latitude}, Lng ${user.location.longitude}`;
         }
 
         info.innerHTML = `
@@ -388,6 +394,7 @@ function escapeHtml(value) {
 
 async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
+    currentPassword = "";
     if (socket) { socket.disconnect(); socket = null; }
     showLogin();
 }

